@@ -1,0 +1,224 @@
+/* Të gjitha stilet tuaja ekzistuese RUHEN – këtu shtoj vetëm ato që mungojnë */
+
+/* Për modal dhe panel - shto në fund të style.css */
+
+.modal {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.8);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-content {
+  background: #1e1e2a;
+  max-width: 400px;
+  width: 90%;
+  border-radius: 20px;
+  padding: 20px;
+  position: relative;
+}
+.close-modal {
+  position: absolute;
+  top: 10px;
+  right: 20px;
+  font-size: 28px;
+  cursor: pointer;
+  color: #aaa;
+}
+.auth-tabs {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 1.2rem;
+  padding: 5px 0;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tab-btn.active {
+  color: #e50914;
+  border-bottom-color: #e50914;
+}
+.auth-form {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+.auth-form.active {
+  display: flex;
+}
+.auth-form input {
+  padding: 10px;
+  border-radius: 30px;
+  border: none;
+  background: #2a2a35;
+  color: white;
+}
+.btn-primary, .btn-google {
+  padding: 10px;
+  border-radius: 30px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+}
+.btn-primary {
+  background: #e50914;
+  color: white;
+}
+.btn-google {
+  background: white;
+  color: black;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.user-panel {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  width: 320px;
+  background: #141414;
+  border-radius: 16px;
+  padding: 15px;
+  z-index: 1500;
+  border: 1px solid #333;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+}
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #333;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+.panel-points {
+  background: #222;
+  padding: 10px;
+  border-radius: 12px;
+  margin-bottom: 10px;
+}
+.btn-small {
+  background: #e50914;
+  border: none;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  margin-left: 10px;
+}
+.panel-section {
+  margin-top: 15px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.panel-section h4 {
+  margin: 5px 0;
+}
+.panel-section div {
+  background: #222;
+  margin: 5px 0;
+  padding: 5px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+}
+.btn-outline-full {
+  width: 100%;
+  background: none;
+  border: 1px solid #e50914;
+  color: #e50914;
+  padding: 8px;
+  border-radius: 30px;
+  margin-top: 15px;
+  cursor: pointer;
+}
+.toast {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  background: #e50914;
+  padding: 12px 20px;
+  border-radius: 40px;
+  color: white;
+  z-index: 3000;
+  opacity: 0;
+  transition: 0.3s;
+  pointer-events: none;
+}
+.toast.show {
+  opacity: 1;
+}
+
+/* Dritarja e pasur e HOVER-it */
+.preview-rich {
+  position: absolute;
+  width: 320px;
+  background: #0f0f1a;
+  border-radius: 16px;
+  overflow: hidden;
+  z-index: 2000;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid #333;
+}
+.preview-trailer iframe {
+  width: 100%;
+  height: 180px;
+  border: none;
+}
+.preview-info {
+  padding: 12px;
+}
+.preview-info h4 {
+  margin: 0 0 5px;
+  font-size: 1.1rem;
+}
+.preview-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: #ccc;
+  margin-bottom: 8px;
+}
+.preview-overview {
+  font-size: 0.8rem;
+  color: #bbb;
+  margin-bottom: 8px;
+}
+.preview-cast {
+  font-size: 0.7rem;
+  color: #aaa;
+}
+
+/* Për kartelat ekzistuese - siguro që ikonat e favorites të jenë të dukshme */
+.card {
+  position: relative;
+}
+.card-icons {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  gap: 8px;
+  background: rgba(0,0,0,0.6);
+  padding: 4px 8px;
+  border-radius: 20px;
+  z-index: 10;
+}
+.card-icons i {
+  cursor: pointer;
+  font-size: 1rem;
+  color: white;
+  transition: 0.2s;
+}
+.card-icons i.fa-heart:hover { color: #ff4d4d; }
+.card-icons i.fa-clock:hover { color: #ffaa00; }
