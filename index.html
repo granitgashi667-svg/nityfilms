@@ -1,126 +1,744 @@
 <!DOCTYPE html>
 <html lang="sq">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AlbFilms24 - Filma dhe Seriale HD</title>
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<!-- Firebase SDK -->
-<script type="module" src="main.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlbFilms24 - Faqja Kryesore</title>
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase Functions
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, getDoc, updateDoc, increment, arrayUnion, arrayRemove, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // Firebase Configuration (ZEVENDESO ME TE DHENAT E PROJEKTIT TEND)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDummyKeyReplaceWithYours",  // <-- ZEVENDESOJE
+            authDomain: "albfilms24.firebaseapp.com",  // <-- ZEVENDESOJE
+            projectId: "albfilms24",                  // <-- ZEVENDESOJE
+            storageBucket: "albfilms24.appspot.com",  // <-- ZEVENDESOJE
+            messagingSenderId: "123456789012",        // <-- ZEVENDESOJE
+            appId: "1:123456789012:web:abc123def456"  // <-- ZEVENDESOJE
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- Global Variables ---
+        let currentUser = null;
+        let userDataListener = null;
+        let currentPreviewBox = null;
+        let hoverTimeout = null;
+
+        // TMDB Configuration
+        const TMDB_API_KEY = '7a98db423d6e3a5ee922a3e51a09d135'; // <-- ZEVENDESOJE ME CIELCIN TEND
+        const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+        const TMDB_IMG_URL = 'https://image.tmdb.org/t/p/w500';
+
+        // --- Helper Functions ---
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        function closeModal() {
+            document.getElementById('authModal').style.display = 'none';
+        }
+
+        // --- Preview Functions (Rich Hover) ---
+        function removePreview() {
+            if (currentPreviewBox && currentPreviewBox.remove) {
+                currentPreviewBox.remove();
+            }
+            currentPreviewBox = null;
+        }
+
+        async function showRichPreview(movieId, cardElement) {
+            removePreview(); // Remove any existing preview
+
+            try {
+                // Fetch Movie Details, Credits & Videos in parallel
+                const [movieRes, creditsRes, videosRes] = await Promise.all([
+                    fetch(`${TMDB_BASE_URL}/movie/${movieId}?api_key=${TMDB_API_KEY}&language=en-US`),
+                    fetch(`${TMDB_BASE_URL}/movie/${movieId}/credits?api_key=${TMDB_API_KEY}&language=en-US`),
+                    fetch(`${TMDB_BASE_URL}/movie/${movieId}/videos?api_key=${TMDB_API_KEY}&language=en-US`)
+                ]);
+
+                const movie = await movieRes.json();
+                const credits = await creditsRes.json();
+                const videos = await videosRes.json();
+
+                // Find the first official trailer
+                const trailer = videos.results.find(v => v.type === 'Trailer' && v.site === 'YouTube' && v.official === true);
+                const trailerKey = trailer ? trailer.key : null;
+
+                // Get top 3 cast members
+                const castList = credits.cast.slice(0, 3).map(actor => actor.name).join(', ');
+
+                // Create preview container
+                const preview = document.createElement('div');
+                preview.className = 'preview-rich';
+
+                const trailerHtml = trailerKey
+                    ? `<div class="preview-trailer">
+                          <iframe src="https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&showinfo=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                       </div>`
+                    : '<div class="preview-no-trailer"><i class="fas fa-video-slash"></i> No trailer available</div>';
+
+                preview.innerHTML = `
+                    ${trailerHtml}
+                    <div class="preview-info">
+                        <h4>${movie.title} (${new Date(movie.release_date).getFullYear() || 'N/A'})</h4>
+                        <div class="preview-meta">
+                            <span><i class="fas fa-star"></i> ${movie.vote_average?.toFixed(1)}/10</span>
+                            <span><i class="far fa-clock"></i> ${movie.runtime || '?'} min</span>
+                        </div>
+                        <div class="preview-overview">${movie.overview?.length > 150 ? movie.overview.substring(0, 150) + '...' : movie.overview || 'No description available.'}</div>
+                        <div class="preview-cast"><strong>Cast:</strong> ${castList || 'Information not available'}</div>
+                    </div>
+                `;
+
+                document.body.appendChild(preview);
+                currentPreviewBox = preview;
+
+                // Position the preview near the card
+                const cardRect = cardElement.getBoundingClientRect();
+                const previewRect = preview.getBoundingClientRect();
+                let top = cardRect.top + window.scrollY;
+                let left = cardRect.left + window.scrollX + cardRect.width + 10;
+
+                // Adjust if preview goes off-screen to the right
+                if (left + previewRect.width > window.innerWidth) {
+                    left = cardRect.left + window.scrollX - previewRect.width - 10;
+                }
+                // Adjust if preview goes off-screen at the bottom
+                if (top + previewRect.height > window.innerHeight + window.scrollY) {
+                    top = cardRect.bottom + window.scrollY - previewRect.height;
+                }
+
+                preview.style.top = `${top}px`;
+                preview.style.left = `${left}px`;
+            } catch (error) {
+                console.error('Error loading preview:', error);
+            }
+        }
+
+        // --- Firestore Helper Functions (Points & Lists) ---
+        async function addPoints(pointsToAdd) {
+            if (!currentUser) {
+                showToast('Please login first!');
+                return false;
+            }
+            try {
+                const userRef = doc(db, 'users', currentUser.uid);
+                await updateDoc(userRef, {
+                    points: increment(pointsToAdd)
+                });
+                showToast(`+${pointsToAdd} points!`);
+                return true;
+            } catch (error) {
+                console.error('Error adding points:', error);
+                showToast('Could not add points.');
+                return false;
+            }
+        }
+
+        async function toggleFavorite(movie) {
+            if (!currentUser) {
+                showToast('Please login first!');
+                return;
+            }
+            const userRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            const currentFavs = userSnap.data()?.favorites || [];
+            const isFavorite = currentFavs.some(fav => fav.id === movie.id);
+
+            try {
+                if (isFavorite) {
+                    await updateDoc(userRef, {
+                        favorites: arrayRemove(movie)
+                    });
+                    showToast(`Removed "${movie.title}" from favorites.`);
+                } else {
+                    await updateDoc(userRef, {
+                        favorites: arrayUnion(movie)
+                    });
+                    showToast(`Added "${movie.title}" to favorites.`);
+                }
+            } catch (error) {
+                console.error('Error toggling favorite:', error);
+                showToast('Could not update favorites.');
+            }
+        }
+
+        async function toggleWatchlist(movie) {
+            if (!currentUser) {
+                showToast('Please login first!');
+                return;
+            }
+            const userRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            const currentWatchlist = userSnap.data()?.watchlist || [];
+            const isInWatchlist = currentWatchlist.some(w => w.id === movie.id);
+
+            try {
+                if (isInWatchlist) {
+                    await updateDoc(userRef, {
+                        watchlist: arrayRemove(movie)
+                    });
+                    showToast(`Removed "${movie.title}" from watchlist.`);
+                } else {
+                    await updateDoc(userRef, {
+                        watchlist: arrayUnion(movie)
+                    });
+                    showToast(`Added "${movie.title}" to watchlist.`);
+                }
+            } catch (error) {
+                console.error('Error toggling watchlist:', error);
+                showToast('Could not update watchlist.');
+            }
+        }
+
+        async function redeemAdFree() {
+            if (!currentUser) {
+                showToast('Please login first!');
+                return;
+            }
+            const userRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            const points = userSnap.data()?.points || 0;
+            if (points >= 2000) {
+                const newPoints = points - 2000;
+                const adFreeUntil = new Date();
+                adFreeUntil.setDate(adFreeUntil.getDate() + 30);
+                await updateDoc(userRef, {
+                    points: newPoints,
+                    adFreeUntil: adFreeUntil.toISOString()
+                });
+                showToast('Ad-free mode activated for 30 days!');
+                location.reload();
+            } else {
+                showToast(`Not enough points. Need 2000 points, you have ${points}.`);
+            }
+        }
+
+        // --- Function to load and display movies in a row ---
+        async function loadMoviesToRow(endpointUrl, rowId, limit = 12) {
+            const rowContainer = document.getElementById(rowId);
+            if (!rowContainer) return;
+
+            rowContainer.innerHTML = '<div class="loading">Loading movies...</div>';
+            try {
+                const response = await fetch(`${TMDB_BASE_URL}${endpointUrl}?api_key=${TMDB_API_KEY}&language=en-US`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                const movies = data.results.slice(0, limit);
+
+                rowContainer.innerHTML = '';
+                movies.forEach(movie => {
+                    const movieCard = document.createElement('div');
+                    movieCard.className = 'card';
+                    movieCard.setAttribute('data-movie-id', movie.id);
+                    movieCard.setAttribute('data-movie-title', movie.title);
+                    movieCard.setAttribute('data-movie-poster', movie.poster_path);
+
+                    // Card content
+                    movieCard.innerHTML = `
+                        <div class="card-icons">
+                            <i class="far fa-heart favorite-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
+                            <i class="far fa-clock watchlater-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
+                        </div>
+                        <img src="${movie.poster_path ? TMDB_IMG_URL + movie.poster_path : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${movie.title}">
+                    `;
+
+                    // Hover event
+                    let hoverTimeoutCard;
+                    movieCard.addEventListener('mouseenter', (event) => {
+                        hoverTimeoutCard = setTimeout(() => {
+                            showRichPreview(movie.id, movieCard);
+                        }, 300);
+                    });
+                    movieCard.addEventListener('mouseleave', () => {
+                        clearTimeout(hoverTimeoutCard);
+                        removePreview();
+                    });
+                    // Click to go to watch page
+                    movieCard.addEventListener('click', (e) => {
+                        if (e.target.tagName === 'I') return;
+                        window.location.href = `watch.html?id=${movie.id}`;
+                    });
+
+                    rowContainer.appendChild(movieCard);
+                });
+
+                // Attach favorite/watchlist event listeners to the newly added icons
+                attachIconEvents();
+            } catch (error) {
+                console.error(`Error loading movies for ${rowId}:`, error);
+                rowContainer.innerHTML = '<div class="error">Failed to load movies. Please try again later.</div>';
+            }
+        }
+
+        // Function to attach event listeners to favorite and watchlist icons
+        function attachIconEvents() {
+            // Favorite icons
+            document.querySelectorAll('.favorite-icon').forEach(icon => {
+                icon.removeEventListener('click', handleFavoriteClick);
+                icon.addEventListener('click', handleFavoriteClick);
+            });
+            // Watchlist icons
+            document.querySelectorAll('.watchlater-icon').forEach(icon => {
+                icon.removeEventListener('click', handleWatchlistClick);
+                icon.addEventListener('click', handleWatchlistClick);
+            });
+        }
+
+        function handleFavoriteClick(event) {
+            event.stopPropagation();
+            const icon = event.currentTarget;
+            const movie = {
+                id: parseInt(icon.dataset.movieId),
+                title: icon.dataset.movieTitle,
+                poster: icon.dataset.moviePoster
+            };
+            toggleFavorite(movie);
+        }
+
+        function handleWatchlistClick(event) {
+            event.stopPropagation();
+            const icon = event.currentTarget;
+            const movie = {
+                id: parseInt(icon.dataset.movieId),
+                title: icon.dataset.movieTitle,
+                poster: icon.dataset.moviePoster
+            };
+            toggleWatchlist(movie);
+        }
+
+        // --- Authentication State & User Panel ---
+        function updateUserPanel(user) {
+            const userPanel = document.getElementById('userPanel');
+            const userPointsSpan = document.getElementById('userPoints');
+            const adFreeStatusSpan = document.getElementById('adFreeStatus');
+            const favoritesListDiv = document.getElementById('favoritesList');
+            const watchlistListDiv = document.getElementById('watchlistList');
+
+            if (user) {
+                userPanel.style.display = 'block';
+                document.getElementById('userName').innerText = user.email.split('@')[0];
+
+                const userRef = doc(db, 'users', user.uid);
+                if (userDataListener) userDataListener();
+                userDataListener = onSnapshot(userRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const userData = docSnap.data();
+                        userPointsSpan.innerText = userData.points || 0;
+                        const isAdFree = userData.adFreeUntil && new Date(userData.adFreeUntil) > new Date();
+                        adFreeStatusSpan.innerText = isAdFree ? '✅ Ad-free active' : '⚠️ Ads are active. Use 2000 points for 30 days ad-free.';
+
+                        // Render favorites
+                        favoritesListDiv.innerHTML = '';
+                        (userData.favorites || []).forEach(fav => {
+                            const favItem = document.createElement('div');
+                            favItem.innerHTML = `<span>🎬 ${fav.title}</span> <button class="remove-fav" data-id="${fav.id}" data-title="${fav.title.replace(/'/g, "\\'")}" data-poster="${fav.poster || ''}">❌</button>`;
+                            favoritesListDiv.appendChild(favItem);
+                        });
+                        // Render watchlist
+                        watchlistListDiv.innerHTML = '';
+                        (userData.watchlist || []).forEach(wl => {
+                            const wlItem = document.createElement('div');
+                            wlItem.innerHTML = `<span>⏰ ${wl.title}</span> <button class="remove-wl" data-id="${wl.id}" data-title="${wl.title.replace(/'/g, "\\'")}" data-poster="${wl.poster || ''}">❌</button>`;
+                            watchlistListDiv.appendChild(wlItem);
+                        });
+
+                        // Add event listeners for remove buttons
+                        document.querySelectorAll('.remove-fav').forEach(btn => {
+                            btn.onclick = async (e) => {
+                                e.stopPropagation();
+                                const movie = { id: parseInt(btn.dataset.id), title: btn.dataset.title, poster: btn.dataset.poster };
+                                await toggleFavorite(movie);
+                            };
+                        });
+                        document.querySelectorAll('.remove-wl').forEach(btn => {
+                            btn.onclick = async (e) => {
+                                e.stopPropagation();
+                                const movie = { id: parseInt(btn.dataset.id), title: btn.dataset.title, poster: btn.dataset.poster };
+                                await toggleWatchlist(movie);
+                            };
+                        });
+                    } else {
+                        // Create user document if it doesn't exist
+                        setDoc(userRef, { points: 0, favorites: [], watchlist: [], adFreeUntil: null });
+                    }
+                });
+            } else {
+                if (userDataListener) userDataListener();
+                userPanel.style.display = 'none';
+            }
+        }
+
+        // --- Search Functionality (Kept simple, using TMDB API) ---
+        async function searchMovies(query) {
+            const searchRow = document.getElementById('searchRow');
+            const searchContainer = document.getElementById('searchRowContainer');
+
+            if (!query || query.length < 2) {
+                searchContainer.style.display = 'none';
+                return;
+            }
+
+            searchContainer.style.display = 'block';
+            searchRow.innerHTML = '<div class="loading">Searching...</div>';
+
+            try {
+                const response = await fetch(`${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&language=en-US&query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                const movies = data.results.slice(0, 12);
+
+                searchRow.innerHTML = '';
+                movies.forEach(movie => {
+                    const movieCard = document.createElement('div');
+                    movieCard.className = 'card';
+                    movieCard.setAttribute('data-movie-id', movie.id);
+                    movieCard.innerHTML = `
+                        <div class="card-icons">
+                            <i class="far fa-heart favorite-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
+                            <i class="far fa-clock watchlater-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
+                        </div>
+                        <img src="${movie.poster_path ? TMDB_IMG_URL + movie.poster_path : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${movie.title}">
+                    `;
+                    movieCard.addEventListener('click', (e) => {
+                        if (e.target.tagName === 'I') return;
+                        window.location.href = `watch.html?id=${movie.id}`;
+                    });
+                    searchRow.appendChild(movieCard);
+                });
+                attachIconEvents();
+            } catch (error) {
+                console.error('Search error:', error);
+                searchRow.innerHTML = '<div class="error">Search failed.</div>';
+            }
+        }
+
+        // --- Initial Load of Movie Rows ---
+        async function loadAllMovies() {
+            await loadMoviesToRow('/trending/movie/week', 'trendingRow');
+            await loadMoviesToRow('/movie/top_rated', 'topRatedRow');
+            await loadMoviesToRow('/movie/upcoming', 'upcomingRow');
+        }
+
+        // --- Genre Load Function to Overwrite Trending Row ---
+        window.loadGenre = async function(genreId) {
+            const trendingRow = document.getElementById('trendingRow');
+            trendingRow.innerHTML = '<div class="loading">Loading genre...</div>';
+            try {
+                const response = await fetch(`${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreId}&language=en-US`);
+                const data = await response.json();
+                const movies = data.results.slice(0, 12);
+                trendingRow.innerHTML = '';
+                movies.forEach(movie => {
+                    const movieCard = document.createElement('div');
+                    movieCard.className = 'card';
+                    movieCard.setAttribute('data-movie-id', movie.id);
+                    movieCard.innerHTML = `
+                        <div class="card-icons">
+                            <i class="far fa-heart favorite-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
+                            <i class="far fa-clock watchlater-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
+                        </div>
+                        <img src="${movie.poster_path ? TMDB_IMG_URL + movie.poster_path : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${movie.title}">
+                    `;
+                    movieCard.addEventListener('click', (e) => {
+                        if (e.target.tagName === 'I') return;
+                        window.location.href = `watch.html?id=${movie.id}`;
+                    });
+                    trendingRow.appendChild(movieCard);
+                });
+                attachIconEvents();
+            } catch (error) {
+                console.error('Error loading genre:', error);
+                trendingRow.innerHTML = '<div class="error">Failed to load genre.</div>';
+            }
+        };
+
+        window.scrollToContent = function() {
+            document.querySelector('.main').scrollIntoView({ behavior: 'smooth' });
+        };
+
+        // --- Authentication UI Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const userIcon = document.getElementById('userIcon');
+            const authModal = document.getElementById('authModal');
+            const closeModalBtn = document.querySelector('.close-modal');
+            const loginBtn = document.getElementById('loginBtn');
+            const registerBtn = document.getElementById('registerBtn');
+            const googleLoginBtn = document.getElementById('googleLoginBtn');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const redeemAdFreeBtn = document.getElementById('redeemAdFreeBtn');
+            const closePanelBtn = document.getElementById('closePanel');
+            const searchInput = document.getElementById('searchInput');
+
+            // Auth state observer
+            onAuthStateChanged(auth, (user) => {
+                currentUser = user;
+                updateUserPanel(user);
+                if (user) {
+                    const userIconElem = document.getElementById('userIcon');
+                    if (userIconElem) userIconElem.style.color = '#e50914';
+                } else {
+                    const userIconElem = document.getElementById('userIcon');
+                    if (userIconElem) userIconElem.style.color = '#ccc';
+                }
+            });
+
+            if (userIcon) {
+                userIcon.onclick = () => {
+                    if (currentUser) {
+                        const panel = document.getElementById('userPanel');
+                        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+                    } else {
+                        authModal.style.display = 'flex';
+                    }
+                };
+            }
+
+            if (closeModalBtn) closeModalBtn.onclick = closeModal;
+            window.onclick = (event) => {
+                if (event.target === authModal) closeModal();
+            };
+
+            if (loginBtn) {
+                loginBtn.onclick = async () => {
+                    const email = document.getElementById('loginEmail').value;
+                    const password = document.getElementById('loginPassword').value;
+                    try {
+                        await signInWithEmailAndPassword(auth, email, password);
+                        closeModal();
+                        showToast('Login successful!');
+                    } catch (error) {
+                        showToast(error.message);
+                    }
+                };
+            }
+
+            if (registerBtn) {
+                registerBtn.onclick = async () => {
+                    const email = document.getElementById('regEmail').value;
+                    const password = document.getElementById('regPassword').value;
+                    try {
+                        await createUserWithEmailAndPassword(auth, email, password);
+                        closeModal();
+                        showToast('Account created successfully!');
+                    } catch (error) {
+                        showToast(error.message);
+                    }
+                };
+            }
+
+            if (googleLoginBtn) {
+                googleLoginBtn.onclick = async () => {
+                    try {
+                        await signInWithPopup(auth, new GoogleAuthProvider());
+                        closeModal();
+                        showToast('Google login successful!');
+                    } catch (error) {
+                        showToast(error.message);
+                    }
+                };
+            }
+
+            if (logoutBtn) {
+                logoutBtn.onclick = async () => {
+                    await signOut(auth);
+                    showToast('Logged out.');
+                };
+            }
+
+            if (redeemAdFreeBtn) redeemAdFreeBtn.onclick = redeemAdFree;
+            if (closePanelBtn) closePanelBtn.onclick = () => document.getElementById('userPanel').style.display = 'none';
+
+            if (searchInput) {
+                let debounceTimer;
+                searchInput.addEventListener('input', (e) => {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => searchMovies(e.target.value), 500);
+                });
+            }
+
+            // Tab switching in modal
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.onclick = () => {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+                    document.getElementById(btn.dataset.tab === 'login' ? 'loginForm' : 'registerForm').classList.add('active');
+                };
+            });
+
+            // Initial load
+            loadAllMovies();
+        });
+    </script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        /* Basic Styles - to ensure layout looks good before CSS loads */
+        body { margin: 0; background: #0a0a0a; color: #fff; font-family: Arial, sans-serif; display: flex; }
+        .sidebar { width: 70px; background: #111; height: 100vh; position: fixed; display: flex; flex-direction: column; align-items: center; padding-top: 20px; gap: 20px; }
+        .sidebar i { color: #aaa; cursor: pointer; font-size: 24px; }
+        .sidebar i:hover { color: #e50914; }
+        .main { margin-left: 80px; width: 100%; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .brand span { color: #e50914; }
+        #searchInput { padding: 10px; border-radius: 6px; border: none; width: 250px; background: #222; color: white; }
+        .hero { height: 400px; background: url('https://image.tmdb.org/t/p/original/8rpDcsfLJypbO6vREc0547VKqEv.jpg'); background-size: cover; background-position: center; display: flex; align-items: center; padding: 40px; border-radius: 12px; margin-bottom: 20px; }
+        .hero-content { max-width: 500px; }
+        .hero button { background: #e50914; border: none; padding: 12px 24px; color: white; cursor: pointer; border-radius: 6px; font-weight: bold; }
+        .genres { margin: 10px 0; }
+        .genres button { margin: 5px; padding: 8px 12px; background: #222; color: #fff; border: none; cursor: pointer; border-radius: 4px; }
+        .section-title { margin: 30px 0 15px 0; font-size: 24px; }
+        .row { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 10px; }
+        .card { min-width: 150px; cursor: pointer; position: relative; transition: transform 0.2s; }
+        .card:hover { transform: scale(1.05); }
+        .card img { width: 150px; border-radius: 8px; }
+        .card-icons { position: absolute; top: 5px; right: 5px; display: flex; gap: 8px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 20px; z-index: 5; }
+        .card-icons i { cursor: pointer; font-size: 1rem; color: white; transition: 0.2s; }
+        .card-icons i.fa-heart:hover { color: #ff4d4d; }
+        .card-icons i.fa-clock:hover { color: #ffaa00; }
+        .preview-rich { position: absolute; width: 350px; background: #1a1a2a; border-radius: 12px; overflow: hidden; z-index: 2000; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #333; }
+        .preview-trailer iframe { width: 100%; height: 197px; border: none; }
+        .preview-no-trailer { height: 197px; background: #111; display: flex; align-items: center; justify-content: center; }
+        .preview-info { padding: 12px; }
+        .preview-info h4 { margin: 0 0 5px; font-size: 1.1rem; }
+        .preview-meta { display: flex; gap: 12px; font-size: 0.8rem; color: #ccc; margin-bottom: 8px; }
+        .preview-overview { font-size: 0.8rem; color: #bbb; margin-bottom: 8px; }
+        .preview-cast { font-size: 0.7rem; color: #aaa; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 3000; align-items: center; justify-content: center; }
+        .modal-content { background: #1e1e2a; max-width: 400px; width: 90%; border-radius: 20px; padding: 20px; position: relative; }
+        .close-modal { position: absolute; top: 10px; right: 20px; font-size: 28px; cursor: pointer; color: #aaa; }
+        .auth-tabs { display: flex; gap: 15px; margin-bottom: 20px; }
+        .tab-btn { background: none; border: none; color: #ccc; font-size: 1.2rem; padding: 5px 0; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab-btn.active { color: #e50914; border-bottom-color: #e50914; }
+        .auth-form { display: none; flex-direction: column; gap: 12px; }
+        .auth-form.active { display: flex; }
+        .auth-form input { padding: 10px; border-radius: 30px; border: none; background: #2a2a35; color: white; }
+        .btn-primary, .btn-google { padding: 10px; border-radius: 30px; border: none; font-weight: bold; cursor: pointer; }
+        .btn-primary { background: #e50914; color: white; }
+        .btn-google { background: white; color: black; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .user-panel { position: fixed; top: 80px; right: 20px; width: 320px; background: #141414; border-radius: 16px; padding: 15px; z-index: 2500; border: 1px solid #333; box-shadow: 0 5px 20px rgba(0,0,0,0.5); display: none; }
+        .panel-header { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px; }
+        .panel-points { background: #222; padding: 10px; border-radius: 12px; margin-bottom: 10px; }
+        .btn-small { background: #e50914; border: none; color: white; padding: 5px 10px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; margin-left: 10px; }
+        .panel-section { margin-top: 15px; max-height: 150px; overflow-y: auto; }
+        .panel-section h4 { margin: 5px 0; }
+        .panel-section div { background: #222; margin: 5px 0; padding: 5px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .btn-outline-full { width: 100%; background: none; border: 1px solid #e50914; color: #e50914; padding: 8px; border-radius: 30px; margin-top: 15px; cursor: pointer; }
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #e50914; padding: 12px 20px; border-radius: 40px; color: white; z-index: 3500; opacity: 0; transition: 0.3s; pointer-events: none; }
+        .toast.show { opacity: 1; }
+        .loading, .error { text-align: center; padding: 20px; color: #aaa; }
+    </style>
 </head>
 <body>
 
 <div class="sidebar">
-  <div class="logo">AF</div>
-  <i class="fas fa-home"></i>
-  <i class="fas fa-film"></i>
-  <i class="fas fa-tv"></i>
-  <i class="fas fa-star"></i>
+    <div class="logo" style="font-weight: bold; font-size: 20px;">AF</div>
+    <i class="fas fa-home"></i>
+    <i class="fas fa-film"></i>
+    <i class="fas fa-tv"></i>
+    <i class="fas fa-star"></i>
 </div>
 
 <div class="main">
-
-<div class="header">
-  <h1 class="brand">AlbFilms<span>24</span></h1>
-  <div style="display: flex; gap: 15px; align-items: center;">
-    <input id="searchInput" placeholder="Kërko filma..." />
-    <i id="userIcon" class="fas fa-user-circle" style="font-size: 28px; cursor: pointer; color: #ccc;"></i>
-  </div>
-</div>
-
-<!-- HERO (e pandryshuar) -->
-<div class="hero">
-  <div class="hero-content">
-    <h1>AlbFilms24</h1>
-    <p>Destinacioni yt për filma dhe seriale HD. Eksploro dhe shijo pa kufi!</p>
-    <button onclick="scrollToContent()">Start Exploring</button>
-  </div>
-</div>
-
-<!-- Zhanret (tani dinamik me më shumë zhanre) -->
-<div class="genres" id="genreButtons">
-  <button data-genre="28">Action</button>
-  <button data-genre="35">Comedy</button>
-  <button data-genre="18">Drama</button>
-  <button data-genre="27">Horror</button>
-  <button data-genre="878">Science Fiction</button>
-  <button data-genre="10749">Romance</button>
-  <button data-genre="99">Documentary</button>
-</div>
-
-<!-- Rreshtat e filmave -->
-<h2 class="section-title">🔥 Trending</h2>
-<div class="row" id="trendingRow"></div>
-
-<h2 class="section-title">⭐ Top Rated</h2>
-<div class="row" id="topRatedRow"></div>
-
-<h2 class="section-title">📅 Upcoming</h2>
-<div class="row" id="upcomingRow"></div>
-
-<!-- Rreshti për rezultatet e kërkimit (shfaqet vetëm kur kërkohet) -->
-<div id="searchRowContainer" style="display: none;">
-  <h2 class="section-title">🔍 Rezultatet e kërkimit</h2>
-  <div class="row" id="searchRow"></div>
-</div>
-
-</div> <!-- .main -->
-
-<!-- MODAL PËR LOGIN -->
-<div id="authModal" class="modal" style="display:none;">
-  <div class="modal-content">
-    <span class="close-modal">&times;</span>
-    <div class="auth-tabs">
-      <button class="tab-btn active" data-tab="login">Hyr</button>
-      <button class="tab-btn" data-tab="register">Regjistrohu</button>
+    <div class="header">
+        <h1 class="brand">AlbFilms<span>24</span></h1>
+        <div style="display: flex; gap: 15px; align-items: center;">
+            <input type="text" id="searchInput" placeholder="Search movies...">
+            <i id="userIcon" class="fas fa-user-circle" style="font-size: 32px; cursor: pointer;"></i>
+        </div>
     </div>
-    <div id="loginForm" class="auth-form active">
-      <input type="email" id="loginEmail" placeholder="Email" required>
-      <input type="password" id="loginPassword" placeholder="Fjalëkalimi" required>
-      <button id="loginBtn" class="btn-primary">Identifikohu</button>
-      <button id="googleLoginBtn" class="btn-google"><i class="fab fa-google"></i> Vazhdo me Google</button>
+
+    <div class="hero">
+        <div class="hero-content">
+            <h1>AlbFilms24</h1>
+            <p>Your destination for HD movies and series. Explore and enjoy without limits!</p>
+            <button onclick="scrollToContent()">Start Exploring</button>
+        </div>
     </div>
-    <div id="registerForm" class="auth-form">
-      <input type="text" id="regName" placeholder="Emri">
-      <input type="email" id="regEmail" placeholder="Email" required>
-      <input type="password" id="regPassword" placeholder="Fjalëkalimi" required>
-      <button id="registerBtn" class="btn-primary">Krijo llogari</button>
+
+    <div class="genres">
+        <button onclick="loadGenre(28)">Action</button>
+        <button onclick="loadGenre(35)">Comedy</button>
+        <button onclick="loadGenre(18)">Drama</button>
+        <button onclick="loadGenre(27)">Horror</button>
+        <button onclick="loadGenre(878)">Sci-Fi</button>
+        <button onclick="loadGenre(10749)">Romance</button>
+        <button onclick="loadGenre(99)">Documentary</button>
     </div>
-  </div>
+
+    <h2 class="section-title">🔥 Trending</h2>
+    <div class="row" id="trendingRow"></div>
+
+    <h2 class="section-title">⭐ Top Rated</h2>
+    <div class="row" id="topRatedRow"></div>
+
+    <h2 class="section-title">📅 Upcoming</h2>
+    <div class="row" id="upcomingRow"></div>
+
+    <div id="searchRowContainer" style="display: none;">
+        <h2 class="section-title">🔍 Search Results</h2>
+        <div class="row" id="searchRow"></div>
+    </div>
 </div>
 
-<!-- PANELI I PËRDORUESIT (shfaqet pas login) -->
-<div id="userPanel" class="user-panel" style="display:none;">
-  <div class="panel-header">
-    <i class="fas fa-user-circle"></i> <span id="userName">Përdorues</span>
-    <i id="closePanel" class="fas fa-times" style="cursor:pointer;"></i>
-  </div>
-  <div class="panel-points">
-    🪙 Pikët: <strong id="userPoints">0</strong>
-    <button id="redeemAdFreeBtn" class="btn-small">Hiq reklamat (2000p)</button>
-  </div>
-  <div class="panel-status" id="adFreeStatus"></div>
-  <div class="panel-section">
-    <h4><i class="fas fa-heart"></i> Favorites</h4>
-    <div id="favoritesList"></div>
-  </div>
-  <div class="panel-section">
-    <h4><i class="fas fa-clock"></i> Watch Later</h4>
-    <div id="watchlistList"></div>
-  </div>
-  <button id="logoutBtn" class="btn-outline-full">Dilni</button>
+<!-- Auth Modal -->
+<div id="authModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <div class="auth-tabs">
+            <button class="tab-btn active" data-tab="login">Login</button>
+            <button class="tab-btn" data-tab="register">Register</button>
+        </div>
+        <div id="loginForm" class="auth-form active">
+            <input type="email" id="loginEmail" placeholder="Email" required>
+            <input type="password" id="loginPassword" placeholder="Password" required>
+            <button id="loginBtn" class="btn-primary">Login</button>
+            <button id="googleLoginBtn" class="btn-google"><i class="fab fa-google"></i> Continue with Google</button>
+        </div>
+        <div id="registerForm" class="auth-form">
+            <input type="text" id="regName" placeholder="Name">
+            <input type="email" id="regEmail" placeholder="Email" required>
+            <input type="password" id="regPassword" placeholder="Password" required>
+            <button id="registerBtn" class="btn-primary">Create Account</button>
+        </div>
+    </div>
 </div>
 
-<!-- TOAST NOTIFIKIMET -->
+<!-- User Panel -->
+<div id="userPanel" class="user-panel">
+    <div class="panel-header">
+        <i class="fas fa-user-circle"></i> <span id="userName">User</span>
+        <i id="closePanel" class="fas fa-times" style="cursor:pointer;"></i>
+    </div>
+    <div class="panel-points">
+        🪙 Points: <strong id="userPoints">0</strong>
+        <button id="redeemAdFreeBtn" class="btn-small">Remove Ads (2000p)</button>
+    </div>
+    <div class="panel-status" id="adFreeStatus"></div>
+    <div class="panel-section">
+        <h4><i class="fas fa-heart"></i> Favorites</h4>
+        <div id="favoritesList"></div>
+    </div>
+    <div class="panel-section">
+        <h4><i class="fas fa-clock"></i> Watch Later</h4>
+        <div id="watchlistList"></div>
+    </div>
+    <button id="logoutBtn" class="btn-outline-full">Logout</button>
+</div>
+
 <div id="toast" class="toast"></div>
-
-<script>
-// Funksion i vogël për scroll (ekzistues)
-function scrollToContent() {
-  document.querySelector('.main').scrollIntoView({ behavior: 'smooth' });
-}
-</script>
 
 </body>
 </html>
