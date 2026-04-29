@@ -3,648 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AlbFilms24 - Faqja Kryesore</title>
-    <!-- Firebase SDK -->
-    <script type="module">
-        // Import Firebase Functions
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, doc, getDoc, updateDoc, increment, arrayUnion, arrayRemove, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-        // Firebase Configuration (ZEVENDESO ME TE DHENAT E PROJEKTIT TEND)
-        const firebaseConfig = {
-            apiKey: "AIzaSyDummyKeyReplaceWithYours",  // <-- ZEVENDESOJE
-            authDomain: "albfilms24.firebaseapp.com",  // <-- ZEVENDESOJE
-            projectId: "albfilms24",                  // <-- ZEVENDESOJE
-            storageBucket: "albfilms24.appspot.com",  // <-- ZEVENDESOJE
-            messagingSenderId: "123456789012",        // <-- ZEVENDESOJE
-            appId: "1:123456789012:web:abc123def456"  // <-- ZEVENDESOJE
-        };
-
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-
-        // --- Global Variables ---
-        let currentUser = null;
-        let userDataListener = null;
-        let currentPreviewBox = null;
-        let hoverTimeout = null;
-
-        // TMDB Configuration
-        const TMDB_API_KEY = '7a98db423d6e3a5ee922a3e51a09d135'; // <-- ZEVENDESOJE ME CIELCIN TEND
-        const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-        const TMDB_IMG_URL = 'https://image.tmdb.org/t/p/w500';
-
-        // --- Helper Functions ---
-        function showToast(message) {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
-
-        function closeModal() {
-            document.getElementById('authModal').style.display = 'none';
-        }
-
-        // --- Preview Functions (Rich Hover) ---
-        function removePreview() {
-            if (currentPreviewBox && currentPreviewBox.remove) {
-                currentPreviewBox.remove();
-            }
-            currentPreviewBox = null;
-        }
-
-        async function showRichPreview(movieId, cardElement) {
-            removePreview(); // Remove any existing preview
-
-            try {
-                // Fetch Movie Details, Credits & Videos in parallel
-                const [movieRes, creditsRes, videosRes] = await Promise.all([
-                    fetch(`${TMDB_BASE_URL}/movie/${movieId}?api_key=${TMDB_API_KEY}&language=en-US`),
-                    fetch(`${TMDB_BASE_URL}/movie/${movieId}/credits?api_key=${TMDB_API_KEY}&language=en-US`),
-                    fetch(`${TMDB_BASE_URL}/movie/${movieId}/videos?api_key=${TMDB_API_KEY}&language=en-US`)
-                ]);
-
-                const movie = await movieRes.json();
-                const credits = await creditsRes.json();
-                const videos = await videosRes.json();
-
-                // Find the first official trailer
-                const trailer = videos.results.find(v => v.type === 'Trailer' && v.site === 'YouTube' && v.official === true);
-                const trailerKey = trailer ? trailer.key : null;
-
-                // Get top 3 cast members
-                const castList = credits.cast.slice(0, 3).map(actor => actor.name).join(', ');
-
-                // Create preview container
-                const preview = document.createElement('div');
-                preview.className = 'preview-rich';
-
-                const trailerHtml = trailerKey
-                    ? `<div class="preview-trailer">
-                          <iframe src="https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&showinfo=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
-                       </div>`
-                    : '<div class="preview-no-trailer"><i class="fas fa-video-slash"></i> No trailer available</div>';
-
-                preview.innerHTML = `
-                    ${trailerHtml}
-                    <div class="preview-info">
-                        <h4>${movie.title} (${new Date(movie.release_date).getFullYear() || 'N/A'})</h4>
-                        <div class="preview-meta">
-                            <span><i class="fas fa-star"></i> ${movie.vote_average?.toFixed(1)}/10</span>
-                            <span><i class="far fa-clock"></i> ${movie.runtime || '?'} min</span>
-                        </div>
-                        <div class="preview-overview">${movie.overview?.length > 150 ? movie.overview.substring(0, 150) + '...' : movie.overview || 'No description available.'}</div>
-                        <div class="preview-cast"><strong>Cast:</strong> ${castList || 'Information not available'}</div>
-                    </div>
-                `;
-
-                document.body.appendChild(preview);
-                currentPreviewBox = preview;
-
-                // Position the preview near the card
-                const cardRect = cardElement.getBoundingClientRect();
-                const previewRect = preview.getBoundingClientRect();
-                let top = cardRect.top + window.scrollY;
-                let left = cardRect.left + window.scrollX + cardRect.width + 10;
-
-                // Adjust if preview goes off-screen to the right
-                if (left + previewRect.width > window.innerWidth) {
-                    left = cardRect.left + window.scrollX - previewRect.width - 10;
-                }
-                // Adjust if preview goes off-screen at the bottom
-                if (top + previewRect.height > window.innerHeight + window.scrollY) {
-                    top = cardRect.bottom + window.scrollY - previewRect.height;
-                }
-
-                preview.style.top = `${top}px`;
-                preview.style.left = `${left}px`;
-            } catch (error) {
-                console.error('Error loading preview:', error);
-            }
-        }
-
-        // --- Firestore Helper Functions (Points & Lists) ---
-        async function addPoints(pointsToAdd) {
-            if (!currentUser) {
-                showToast('Please login first!');
-                return false;
-            }
-            try {
-                const userRef = doc(db, 'users', currentUser.uid);
-                await updateDoc(userRef, {
-                    points: increment(pointsToAdd)
-                });
-                showToast(`+${pointsToAdd} points!`);
-                return true;
-            } catch (error) {
-                console.error('Error adding points:', error);
-                showToast('Could not add points.');
-                return false;
-            }
-        }
-
-        async function toggleFavorite(movie) {
-            if (!currentUser) {
-                showToast('Please login first!');
-                return;
-            }
-            const userRef = doc(db, 'users', currentUser.uid);
-            const userSnap = await getDoc(userRef);
-            const currentFavs = userSnap.data()?.favorites || [];
-            const isFavorite = currentFavs.some(fav => fav.id === movie.id);
-
-            try {
-                if (isFavorite) {
-                    await updateDoc(userRef, {
-                        favorites: arrayRemove(movie)
-                    });
-                    showToast(`Removed "${movie.title}" from favorites.`);
-                } else {
-                    await updateDoc(userRef, {
-                        favorites: arrayUnion(movie)
-                    });
-                    showToast(`Added "${movie.title}" to favorites.`);
-                }
-            } catch (error) {
-                console.error('Error toggling favorite:', error);
-                showToast('Could not update favorites.');
-            }
-        }
-
-        async function toggleWatchlist(movie) {
-            if (!currentUser) {
-                showToast('Please login first!');
-                return;
-            }
-            const userRef = doc(db, 'users', currentUser.uid);
-            const userSnap = await getDoc(userRef);
-            const currentWatchlist = userSnap.data()?.watchlist || [];
-            const isInWatchlist = currentWatchlist.some(w => w.id === movie.id);
-
-            try {
-                if (isInWatchlist) {
-                    await updateDoc(userRef, {
-                        watchlist: arrayRemove(movie)
-                    });
-                    showToast(`Removed "${movie.title}" from watchlist.`);
-                } else {
-                    await updateDoc(userRef, {
-                        watchlist: arrayUnion(movie)
-                    });
-                    showToast(`Added "${movie.title}" to watchlist.`);
-                }
-            } catch (error) {
-                console.error('Error toggling watchlist:', error);
-                showToast('Could not update watchlist.');
-            }
-        }
-
-        async function redeemAdFree() {
-            if (!currentUser) {
-                showToast('Please login first!');
-                return;
-            }
-            const userRef = doc(db, 'users', currentUser.uid);
-            const userSnap = await getDoc(userRef);
-            const points = userSnap.data()?.points || 0;
-            if (points >= 2000) {
-                const newPoints = points - 2000;
-                const adFreeUntil = new Date();
-                adFreeUntil.setDate(adFreeUntil.getDate() + 30);
-                await updateDoc(userRef, {
-                    points: newPoints,
-                    adFreeUntil: adFreeUntil.toISOString()
-                });
-                showToast('Ad-free mode activated for 30 days!');
-                location.reload();
-            } else {
-                showToast(`Not enough points. Need 2000 points, you have ${points}.`);
-            }
-        }
-
-        // --- Function to load and display movies in a row ---
-        async function loadMoviesToRow(endpointUrl, rowId, limit = 12) {
-            const rowContainer = document.getElementById(rowId);
-            if (!rowContainer) return;
-
-            rowContainer.innerHTML = '<div class="loading">Loading movies...</div>';
-            try {
-                const response = await fetch(`${TMDB_BASE_URL}${endpointUrl}?api_key=${TMDB_API_KEY}&language=en-US`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                const movies = data.results.slice(0, limit);
-
-                rowContainer.innerHTML = '';
-                movies.forEach(movie => {
-                    const movieCard = document.createElement('div');
-                    movieCard.className = 'card';
-                    movieCard.setAttribute('data-movie-id', movie.id);
-                    movieCard.setAttribute('data-movie-title', movie.title);
-                    movieCard.setAttribute('data-movie-poster', movie.poster_path);
-
-                    // Card content
-                    movieCard.innerHTML = `
-                        <div class="card-icons">
-                            <i class="far fa-heart favorite-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
-                            <i class="far fa-clock watchlater-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
-                        </div>
-                        <img src="${movie.poster_path ? TMDB_IMG_URL + movie.poster_path : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${movie.title}">
-                    `;
-
-                    // Hover event
-                    let hoverTimeoutCard;
-                    movieCard.addEventListener('mouseenter', (event) => {
-                        hoverTimeoutCard = setTimeout(() => {
-                            showRichPreview(movie.id, movieCard);
-                        }, 300);
-                    });
-                    movieCard.addEventListener('mouseleave', () => {
-                        clearTimeout(hoverTimeoutCard);
-                        removePreview();
-                    });
-                    // Click to go to watch page
-                    movieCard.addEventListener('click', (e) => {
-                        if (e.target.tagName === 'I') return;
-                        window.location.href = `watch.html?id=${movie.id}`;
-                    });
-
-                    rowContainer.appendChild(movieCard);
-                });
-
-                // Attach favorite/watchlist event listeners to the newly added icons
-                attachIconEvents();
-            } catch (error) {
-                console.error(`Error loading movies for ${rowId}:`, error);
-                rowContainer.innerHTML = '<div class="error">Failed to load movies. Please try again later.</div>';
-            }
-        }
-
-        // Function to attach event listeners to favorite and watchlist icons
-        function attachIconEvents() {
-            // Favorite icons
-            document.querySelectorAll('.favorite-icon').forEach(icon => {
-                icon.removeEventListener('click', handleFavoriteClick);
-                icon.addEventListener('click', handleFavoriteClick);
-            });
-            // Watchlist icons
-            document.querySelectorAll('.watchlater-icon').forEach(icon => {
-                icon.removeEventListener('click', handleWatchlistClick);
-                icon.addEventListener('click', handleWatchlistClick);
-            });
-        }
-
-        function handleFavoriteClick(event) {
-            event.stopPropagation();
-            const icon = event.currentTarget;
-            const movie = {
-                id: parseInt(icon.dataset.movieId),
-                title: icon.dataset.movieTitle,
-                poster: icon.dataset.moviePoster
-            };
-            toggleFavorite(movie);
-        }
-
-        function handleWatchlistClick(event) {
-            event.stopPropagation();
-            const icon = event.currentTarget;
-            const movie = {
-                id: parseInt(icon.dataset.movieId),
-                title: icon.dataset.movieTitle,
-                poster: icon.dataset.moviePoster
-            };
-            toggleWatchlist(movie);
-        }
-
-        // --- Authentication State & User Panel ---
-        function updateUserPanel(user) {
-            const userPanel = document.getElementById('userPanel');
-            const userPointsSpan = document.getElementById('userPoints');
-            const adFreeStatusSpan = document.getElementById('adFreeStatus');
-            const favoritesListDiv = document.getElementById('favoritesList');
-            const watchlistListDiv = document.getElementById('watchlistList');
-
-            if (user) {
-                userPanel.style.display = 'block';
-                document.getElementById('userName').innerText = user.email.split('@')[0];
-
-                const userRef = doc(db, 'users', user.uid);
-                if (userDataListener) userDataListener();
-                userDataListener = onSnapshot(userRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const userData = docSnap.data();
-                        userPointsSpan.innerText = userData.points || 0;
-                        const isAdFree = userData.adFreeUntil && new Date(userData.adFreeUntil) > new Date();
-                        adFreeStatusSpan.innerText = isAdFree ? '✅ Ad-free active' : '⚠️ Ads are active. Use 2000 points for 30 days ad-free.';
-
-                        // Render favorites
-                        favoritesListDiv.innerHTML = '';
-                        (userData.favorites || []).forEach(fav => {
-                            const favItem = document.createElement('div');
-                            favItem.innerHTML = `<span>🎬 ${fav.title}</span> <button class="remove-fav" data-id="${fav.id}" data-title="${fav.title.replace(/'/g, "\\'")}" data-poster="${fav.poster || ''}">❌</button>`;
-                            favoritesListDiv.appendChild(favItem);
-                        });
-                        // Render watchlist
-                        watchlistListDiv.innerHTML = '';
-                        (userData.watchlist || []).forEach(wl => {
-                            const wlItem = document.createElement('div');
-                            wlItem.innerHTML = `<span>⏰ ${wl.title}</span> <button class="remove-wl" data-id="${wl.id}" data-title="${wl.title.replace(/'/g, "\\'")}" data-poster="${wl.poster || ''}">❌</button>`;
-                            watchlistListDiv.appendChild(wlItem);
-                        });
-
-                        // Add event listeners for remove buttons
-                        document.querySelectorAll('.remove-fav').forEach(btn => {
-                            btn.onclick = async (e) => {
-                                e.stopPropagation();
-                                const movie = { id: parseInt(btn.dataset.id), title: btn.dataset.title, poster: btn.dataset.poster };
-                                await toggleFavorite(movie);
-                            };
-                        });
-                        document.querySelectorAll('.remove-wl').forEach(btn => {
-                            btn.onclick = async (e) => {
-                                e.stopPropagation();
-                                const movie = { id: parseInt(btn.dataset.id), title: btn.dataset.title, poster: btn.dataset.poster };
-                                await toggleWatchlist(movie);
-                            };
-                        });
-                    } else {
-                        // Create user document if it doesn't exist
-                        setDoc(userRef, { points: 0, favorites: [], watchlist: [], adFreeUntil: null });
-                    }
-                });
-            } else {
-                if (userDataListener) userDataListener();
-                userPanel.style.display = 'none';
-            }
-        }
-
-        // --- Search Functionality (Kept simple, using TMDB API) ---
-        async function searchMovies(query) {
-            const searchRow = document.getElementById('searchRow');
-            const searchContainer = document.getElementById('searchRowContainer');
-
-            if (!query || query.length < 2) {
-                searchContainer.style.display = 'none';
-                return;
-            }
-
-            searchContainer.style.display = 'block';
-            searchRow.innerHTML = '<div class="loading">Searching...</div>';
-
-            try {
-                const response = await fetch(`${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&language=en-US&query=${encodeURIComponent(query)}`);
-                const data = await response.json();
-                const movies = data.results.slice(0, 12);
-
-                searchRow.innerHTML = '';
-                movies.forEach(movie => {
-                    const movieCard = document.createElement('div');
-                    movieCard.className = 'card';
-                    movieCard.setAttribute('data-movie-id', movie.id);
-                    movieCard.innerHTML = `
-                        <div class="card-icons">
-                            <i class="far fa-heart favorite-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
-                            <i class="far fa-clock watchlater-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
-                        </div>
-                        <img src="${movie.poster_path ? TMDB_IMG_URL + movie.poster_path : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${movie.title}">
-                    `;
-                    movieCard.addEventListener('click', (e) => {
-                        if (e.target.tagName === 'I') return;
-                        window.location.href = `watch.html?id=${movie.id}`;
-                    });
-                    searchRow.appendChild(movieCard);
-                });
-                attachIconEvents();
-            } catch (error) {
-                console.error('Search error:', error);
-                searchRow.innerHTML = '<div class="error">Search failed.</div>';
-            }
-        }
-
-        // --- Initial Load of Movie Rows ---
-        async function loadAllMovies() {
-            await loadMoviesToRow('/trending/movie/week', 'trendingRow');
-            await loadMoviesToRow('/movie/top_rated', 'topRatedRow');
-            await loadMoviesToRow('/movie/upcoming', 'upcomingRow');
-        }
-
-        // --- Genre Load Function to Overwrite Trending Row ---
-        window.loadGenre = async function(genreId) {
-            const trendingRow = document.getElementById('trendingRow');
-            trendingRow.innerHTML = '<div class="loading">Loading genre...</div>';
-            try {
-                const response = await fetch(`${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreId}&language=en-US`);
-                const data = await response.json();
-                const movies = data.results.slice(0, 12);
-                trendingRow.innerHTML = '';
-                movies.forEach(movie => {
-                    const movieCard = document.createElement('div');
-                    movieCard.className = 'card';
-                    movieCard.setAttribute('data-movie-id', movie.id);
-                    movieCard.innerHTML = `
-                        <div class="card-icons">
-                            <i class="far fa-heart favorite-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
-                            <i class="far fa-clock watchlater-icon" data-movie-id="${movie.id}" data-movie-title="${movie.title.replace(/'/g, "\\'")}" data-movie-poster="${movie.poster_path || ''}"></i>
-                        </div>
-                        <img src="${movie.poster_path ? TMDB_IMG_URL + movie.poster_path : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${movie.title}">
-                    `;
-                    movieCard.addEventListener('click', (e) => {
-                        if (e.target.tagName === 'I') return;
-                        window.location.href = `watch.html?id=${movie.id}`;
-                    });
-                    trendingRow.appendChild(movieCard);
-                });
-                attachIconEvents();
-            } catch (error) {
-                console.error('Error loading genre:', error);
-                trendingRow.innerHTML = '<div class="error">Failed to load genre.</div>';
-            }
-        };
-
-        window.scrollToContent = function() {
-            document.querySelector('.main').scrollIntoView({ behavior: 'smooth' });
-        };
-
-        // --- Authentication UI Event Listeners ---
-        document.addEventListener('DOMContentLoaded', () => {
-            const userIcon = document.getElementById('userIcon');
-            const authModal = document.getElementById('authModal');
-            const closeModalBtn = document.querySelector('.close-modal');
-            const loginBtn = document.getElementById('loginBtn');
-            const registerBtn = document.getElementById('registerBtn');
-            const googleLoginBtn = document.getElementById('googleLoginBtn');
-            const logoutBtn = document.getElementById('logoutBtn');
-            const redeemAdFreeBtn = document.getElementById('redeemAdFreeBtn');
-            const closePanelBtn = document.getElementById('closePanel');
-            const searchInput = document.getElementById('searchInput');
-
-            // Auth state observer
-            onAuthStateChanged(auth, (user) => {
-                currentUser = user;
-                updateUserPanel(user);
-                if (user) {
-                    const userIconElem = document.getElementById('userIcon');
-                    if (userIconElem) userIconElem.style.color = '#e50914';
-                } else {
-                    const userIconElem = document.getElementById('userIcon');
-                    if (userIconElem) userIconElem.style.color = '#ccc';
-                }
-            });
-
-            if (userIcon) {
-                userIcon.onclick = () => {
-                    if (currentUser) {
-                        const panel = document.getElementById('userPanel');
-                        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-                    } else {
-                        authModal.style.display = 'flex';
-                    }
-                };
-            }
-
-            if (closeModalBtn) closeModalBtn.onclick = closeModal;
-            window.onclick = (event) => {
-                if (event.target === authModal) closeModal();
-            };
-
-            if (loginBtn) {
-                loginBtn.onclick = async () => {
-                    const email = document.getElementById('loginEmail').value;
-                    const password = document.getElementById('loginPassword').value;
-                    try {
-                        await signInWithEmailAndPassword(auth, email, password);
-                        closeModal();
-                        showToast('Login successful!');
-                    } catch (error) {
-                        showToast(error.message);
-                    }
-                };
-            }
-
-            if (registerBtn) {
-                registerBtn.onclick = async () => {
-                    const email = document.getElementById('regEmail').value;
-                    const password = document.getElementById('regPassword').value;
-                    try {
-                        await createUserWithEmailAndPassword(auth, email, password);
-                        closeModal();
-                        showToast('Account created successfully!');
-                    } catch (error) {
-                        showToast(error.message);
-                    }
-                };
-            }
-
-            if (googleLoginBtn) {
-                googleLoginBtn.onclick = async () => {
-                    try {
-                        await signInWithPopup(auth, new GoogleAuthProvider());
-                        closeModal();
-                        showToast('Google login successful!');
-                    } catch (error) {
-                        showToast(error.message);
-                    }
-                };
-            }
-
-            if (logoutBtn) {
-                logoutBtn.onclick = async () => {
-                    await signOut(auth);
-                    showToast('Logged out.');
-                };
-            }
-
-            if (redeemAdFreeBtn) redeemAdFreeBtn.onclick = redeemAdFree;
-            if (closePanelBtn) closePanelBtn.onclick = () => document.getElementById('userPanel').style.display = 'none';
-
-            if (searchInput) {
-                let debounceTimer;
-                searchInput.addEventListener('input', (e) => {
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(() => searchMovies(e.target.value), 500);
-                });
-            }
-
-            // Tab switching in modal
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.onclick = () => {
-                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-                    document.getElementById(btn.dataset.tab === 'login' ? 'loginForm' : 'registerForm').classList.add('active');
-                };
-            });
-
-            // Initial load
-            loadAllMovies();
-        });
-    </script>
-    <link rel="stylesheet" href="style.css">
+    <title>AlbFilms24 - Filma dhe Seriale HD</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
     <style>
-        /* Basic Styles - to ensure layout looks good before CSS loads */
-        body { margin: 0; background: #0a0a0a; color: #fff; font-family: Arial, sans-serif; display: flex; }
-        .sidebar { width: 70px; background: #111; height: 100vh; position: fixed; display: flex; flex-direction: column; align-items: center; padding-top: 20px; gap: 20px; }
-        .sidebar i { color: #aaa; cursor: pointer; font-size: 24px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0a0a0f; color: #fff; }
+        .sidebar { position: fixed; left: 0; top: 0; width: 80px; height: 100vh; background: #111; display: flex; flex-direction: column; align-items: center; padding-top: 30px; gap: 30px; z-index: 100; }
+        .sidebar i { font-size: 24px; color: #aaa; cursor: pointer; transition: 0.2s; }
         .sidebar i:hover { color: #e50914; }
-        .main { margin-left: 80px; width: 100%; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .main { margin-left: 80px; padding: 20px 40px; }
+        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 30px; }
+        .brand { font-size: 28px; font-weight: bold; }
         .brand span { color: #e50914; }
-        #searchInput { padding: 10px; border-radius: 6px; border: none; width: 250px; background: #222; color: white; }
-        .hero { height: 400px; background: url('https://image.tmdb.org/t/p/original/8rpDcsfLJypbO6vREc0547VKqEv.jpg'); background-size: cover; background-position: center; display: flex; align-items: center; padding: 40px; border-radius: 12px; margin-bottom: 20px; }
-        .hero-content { max-width: 500px; }
-        .hero button { background: #e50914; border: none; padding: 12px 24px; color: white; cursor: pointer; border-radius: 6px; font-weight: bold; }
-        .genres { margin: 10px 0; }
-        .genres button { margin: 5px; padding: 8px 12px; background: #222; color: #fff; border: none; cursor: pointer; border-radius: 4px; }
-        .section-title { margin: 30px 0 15px 0; font-size: 24px; }
-        .row { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 10px; }
-        .card { min-width: 150px; cursor: pointer; position: relative; transition: transform 0.2s; }
-        .card:hover { transform: scale(1.05); }
-        .card img { width: 150px; border-radius: 8px; }
-        .card-icons { position: absolute; top: 5px; right: 5px; display: flex; gap: 8px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 20px; z-index: 5; }
-        .card-icons i { cursor: pointer; font-size: 1rem; color: white; transition: 0.2s; }
-        .card-icons i.fa-heart:hover { color: #ff4d4d; }
-        .card-icons i.fa-clock:hover { color: #ffaa00; }
-        .preview-rich { position: absolute; width: 350px; background: #1a1a2a; border-radius: 12px; overflow: hidden; z-index: 2000; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #333; }
-        .preview-trailer iframe { width: 100%; height: 197px; border: none; }
-        .preview-no-trailer { height: 197px; background: #111; display: flex; align-items: center; justify-content: center; }
+        .search-box { display: flex; gap: 10px; align-items: center; }
+        #searchInput { padding: 10px 18px; border-radius: 40px; border: none; background: #1e1e2a; color: white; width: 260px; }
+        #userIcon { font-size: 32px; cursor: pointer; }
+        .hero-slider { margin-bottom: 40px; border-radius: 20px; overflow: hidden; }
+        .swiper { width: 100%; height: 480px; }
+        .swiper-slide { position: relative; }
+        .slide-bg { width: 100%; height: 100%; object-fit: cover; }
+        .slide-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(90deg, rgba(0,0,0,0.8), transparent); }
+        .slide-content { position: absolute; bottom: 60px; left: 50px; max-width: 500px; }
+        .slide-content h2 { font-size: 42px; margin-bottom: 10px; }
+        .btn-primary { background: #e50914; border: none; padding: 12px 28px; border-radius: 40px; color: white; font-weight: bold; cursor: pointer; }
+        .genres { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0; }
+        .genres button { background: #1e1e2a; border: none; padding: 8px 20px; border-radius: 40px; color: white; cursor: pointer; }
+        .genres button:hover { background: #e50914; }
+        .section-title { font-size: 24px; margin: 40px 0 20px 0; border-left: 4px solid #e50914; padding-left: 15px; }
+        /* Rrjet fleksibël – PA horizontal scroll */
+        .movies-grid, .tv-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        .movie-card, .tv-card {
+            background: #1a1a2a;
+            border-radius: 16px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s;
+            position: relative;
+        }
+        .movie-card:hover, .tv-card:hover { transform: translateY(-6px); }
+        .poster {
+            width: 100%;
+            aspect-ratio: 2/3;
+            object-fit: cover;
+        }
+        .card-icons {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            gap: 8px;
+            background: rgba(0,0,0,0.6);
+            padding: 5px 8px;
+            border-radius: 20px;
+            z-index: 5;
+        }
+        .card-icons i { cursor: pointer; font-size: 14px; }
+        .card-info { padding: 10px; }
+        .card-info h4 { font-size: 15px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .card-info p { font-size: 12px; color: #aaa; }
+        /* Preview i pasur (hover) */
+        .preview-rich {
+            position: absolute;
+            width: 340px;
+            background: #1a1a2a;
+            border-radius: 16px;
+            overflow: hidden;
+            z-index: 2000;
+            box-shadow: 0 10px 25px black;
+            border: 1px solid #333;
+        }
+        .preview-trailer iframe { width: 100%; height: 190px; border: none; }
         .preview-info { padding: 12px; }
-        .preview-info h4 { margin: 0 0 5px; font-size: 1.1rem; }
-        .preview-meta { display: flex; gap: 12px; font-size: 0.8rem; color: #ccc; margin-bottom: 8px; }
-        .preview-overview { font-size: 0.8rem; color: #bbb; margin-bottom: 8px; }
-        .preview-cast { font-size: 0.7rem; color: #aaa; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 3000; align-items: center; justify-content: center; }
-        .modal-content { background: #1e1e2a; max-width: 400px; width: 90%; border-radius: 20px; padding: 20px; position: relative; }
-        .close-modal { position: absolute; top: 10px; right: 20px; font-size: 28px; cursor: pointer; color: #aaa; }
-        .auth-tabs { display: flex; gap: 15px; margin-bottom: 20px; }
-        .tab-btn { background: none; border: none; color: #ccc; font-size: 1.2rem; padding: 5px 0; cursor: pointer; border-bottom: 2px solid transparent; }
-        .tab-btn.active { color: #e50914; border-bottom-color: #e50914; }
-        .auth-form { display: none; flex-direction: column; gap: 12px; }
-        .auth-form.active { display: flex; }
-        .auth-form input { padding: 10px; border-radius: 30px; border: none; background: #2a2a35; color: white; }
-        .btn-primary, .btn-google { padding: 10px; border-radius: 30px; border: none; font-weight: bold; cursor: pointer; }
-        .btn-primary { background: #e50914; color: white; }
-        .btn-google { background: white; color: black; display: flex; align-items: center; justify-content: center; gap: 10px; }
-        .user-panel { position: fixed; top: 80px; right: 20px; width: 320px; background: #141414; border-radius: 16px; padding: 15px; z-index: 2500; border: 1px solid #333; box-shadow: 0 5px 20px rgba(0,0,0,0.5); display: none; }
-        .panel-header { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px; }
-        .panel-points { background: #222; padding: 10px; border-radius: 12px; margin-bottom: 10px; }
-        .btn-small { background: #e50914; border: none; color: white; padding: 5px 10px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; margin-left: 10px; }
-        .panel-section { margin-top: 15px; max-height: 150px; overflow-y: auto; }
-        .panel-section h4 { margin: 5px 0; }
-        .panel-section div { background: #222; margin: 5px 0; padding: 5px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .btn-outline-full { width: 100%; background: none; border: 1px solid #e50914; color: #e50914; padding: 8px; border-radius: 30px; margin-top: 15px; cursor: pointer; }
-        .toast { position: fixed; bottom: 30px; right: 30px; background: #e50914; padding: 12px 20px; border-radius: 40px; color: white; z-index: 3500; opacity: 0; transition: 0.3s; pointer-events: none; }
-        .toast.show { opacity: 1; }
-        .loading, .error { text-align: center; padding: 20px; color: #aaa; }
+        .preview-info h4 { font-size: 16px; margin-bottom: 6px; }
+        .preview-meta { display: flex; gap: 12px; font-size: 12px; color: #ccc; margin-bottom: 8px; }
+        .preview-overview { font-size: 12px; color: #bbb; margin-bottom: 8px; }
+        /* Modal, panel, toast – stilet ekzistuese */
+        .modal { display: none; position: fixed; top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:3000;align-items:center;justify-content:center; }
+        .modal-content { background:#1e1e2a; max-width:400px; width:90%; border-radius:24px; padding:20px; }
+        .close-modal { float:right; font-size:28px; cursor:pointer; }
+        .auth-tabs { display:flex; gap:15px; margin:15px 0; }
+        .tab-btn { background:none; border:none; color:#ccc; padding:5px; cursor:pointer; }
+        .tab-btn.active { color:#e50914; border-bottom:2px solid #e50914; }
+        .auth-form { display:none; flex-direction:column; gap:12px; }
+        .auth-form.active { display:flex; }
+        .auth-form input { padding:10px; border-radius:30px; border:none; background:#2a2a35; color:white; }
+        .btn-google { background:white; color:black; padding:10px; border-radius:30px; cursor:pointer; }
+        .user-panel { position:fixed; top:80px; right:20px; width:300px; background:#141414; border-radius:16px; padding:15px; z-index:1500; border:1px solid #333; display:none; }
+        .panel-points { background:#222; padding:10px; border-radius:12px; margin-bottom:10px; }
+        .btn-small { background:#e50914; border:none; color:white; padding:4px 12px; border-radius:20px; cursor:pointer; }
+        .toast { position:fixed; bottom:30px; right:30px; background:#e50914; padding:12px 20px; border-radius:40px; z-index:3500; opacity:0; transition:0.3s; }
+        .toast.show { opacity:1; }
+        @media (max-width: 768px) {
+            .main { margin-left: 70px; padding: 10px; }
+            .movies-grid, .tv-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+        }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
-    <div class="logo" style="font-weight: bold; font-size: 20px;">AF</div>
+    <div class="logo" style="font-weight:bold;">AF</div>
     <i class="fas fa-home"></i>
     <i class="fas fa-film"></i>
     <i class="fas fa-tv"></i>
@@ -654,91 +118,306 @@
 <div class="main">
     <div class="header">
         <h1 class="brand">AlbFilms<span>24</span></h1>
-        <div style="display: flex; gap: 15px; align-items: center;">
-            <input type="text" id="searchInput" placeholder="Search movies...">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Kërko film ose serial...">
             <i id="userIcon" class="fas fa-user-circle" style="font-size: 32px; cursor: pointer;"></i>
         </div>
     </div>
 
-    <div class="hero">
-        <div class="hero-content">
-            <h1>AlbFilms24</h1>
-            <p>Your destination for HD movies and series. Explore and enjoy without limits!</p>
-            <button onclick="scrollToContent()">Start Exploring</button>
+    <!-- Slideri -->
+    <div class="hero-slider">
+        <div class="swiper heroSwiper">
+            <div class="swiper-wrapper" id="heroSlider"></div>
+            <div class="swiper-button-next"></div>
+            <div class="swiper-button-prev"></div>
+            <div class="swiper-pagination"></div>
         </div>
     </div>
 
+    <!-- Zhanret -->
     <div class="genres">
-        <button onclick="loadGenre(28)">Action</button>
-        <button onclick="loadGenre(35)">Comedy</button>
-        <button onclick="loadGenre(18)">Drama</button>
-        <button onclick="loadGenre(27)">Horror</button>
-        <button onclick="loadGenre(878)">Sci-Fi</button>
-        <button onclick="loadGenre(10749)">Romance</button>
-        <button onclick="loadGenre(99)">Documentary</button>
+        <button onclick="loadGenre(28)">Aksion</button>
+        <button onclick="loadGenre(35)">Komedi</button>
+        <button onclick="loadGenre(18)">Dramë</button>
+        <button onclick="loadGenre(27)">Tmerr</button>
+        <button onclick="loadGenre(878)">SF</button>
+        <button onclick="loadGenre(10749)">Romancë</button>
     </div>
 
-    <h2 class="section-title">🔥 Trending</h2>
-    <div class="row" id="trendingRow"></div>
+    <!-- Filma -->
+    <h2 class="section-title">🔥 Më të shikuarit</h2>
+    <div class="movies-grid" id="trendingGrid"></div>
 
-    <h2 class="section-title">⭐ Top Rated</h2>
-    <div class="row" id="topRatedRow"></div>
+    <h2 class="section-title">⭐ Më të vlerësuarit</h2>
+    <div class="movies-grid" id="topRatedGrid"></div>
 
-    <h2 class="section-title">📅 Upcoming</h2>
-    <div class="row" id="upcomingRow"></div>
+    <h2 class="section-title">📅 Të sapoardhur</h2>
+    <div class="movies-grid" id="upcomingGrid"></div>
 
-    <div id="searchRowContainer" style="display: none;">
-        <h2 class="section-title">🔍 Search Results</h2>
-        <div class="row" id="searchRow"></div>
+    <!-- Serialet (TV) -->
+    <h2 class="section-title">📺 Serialet më të njohura</h2>
+    <div class="tv-grid" id="tvGrid"></div>
+
+    <div id="searchResultsContainer" style="display:none;">
+        <h2 class="section-title">🔍 Rezultatet e kërkimit</h2>
+        <div class="movies-grid" id="searchGrid"></div>
     </div>
 </div>
 
-<!-- Auth Modal -->
+<!-- Modal Login -->
 <div id="authModal" class="modal">
     <div class="modal-content">
         <span class="close-modal">&times;</span>
         <div class="auth-tabs">
-            <button class="tab-btn active" data-tab="login">Login</button>
-            <button class="tab-btn" data-tab="register">Register</button>
+            <button class="tab-btn active" data-tab="login">Hyr</button>
+            <button class="tab-btn" data-tab="register">Regjistrohu</button>
         </div>
         <div id="loginForm" class="auth-form active">
-            <input type="email" id="loginEmail" placeholder="Email" required>
-            <input type="password" id="loginPassword" placeholder="Password" required>
-            <button id="loginBtn" class="btn-primary">Login</button>
-            <button id="googleLoginBtn" class="btn-google"><i class="fab fa-google"></i> Continue with Google</button>
+            <input type="email" id="loginEmail" placeholder="Email">
+            <input type="password" id="loginPassword" placeholder="Fjalëkalimi">
+            <button id="loginBtn" class="btn-primary">Hyr</button>
+            <button id="googleLoginBtn" class="btn-google"><i class="fab fa-google"></i> Vazhdo me Google</button>
         </div>
         <div id="registerForm" class="auth-form">
-            <input type="text" id="regName" placeholder="Name">
-            <input type="email" id="regEmail" placeholder="Email" required>
-            <input type="password" id="regPassword" placeholder="Password" required>
-            <button id="registerBtn" class="btn-primary">Create Account</button>
+            <input type="email" id="regEmail" placeholder="Email">
+            <input type="password" id="regPassword" placeholder="Fjalëkalimi">
+            <button id="registerBtn" class="btn-primary">Krijo llogari</button>
         </div>
     </div>
 </div>
 
-<!-- User Panel -->
+<!-- Panel përdoruesi -->
 <div id="userPanel" class="user-panel">
-    <div class="panel-header">
-        <i class="fas fa-user-circle"></i> <span id="userName">User</span>
-        <i id="closePanel" class="fas fa-times" style="cursor:pointer;"></i>
-    </div>
-    <div class="panel-points">
-        🪙 Points: <strong id="userPoints">0</strong>
-        <button id="redeemAdFreeBtn" class="btn-small">Remove Ads (2000p)</button>
-    </div>
-    <div class="panel-status" id="adFreeStatus"></div>
-    <div class="panel-section">
-        <h4><i class="fas fa-heart"></i> Favorites</h4>
-        <div id="favoritesList"></div>
-    </div>
-    <div class="panel-section">
-        <h4><i class="fas fa-clock"></i> Watch Later</h4>
-        <div id="watchlistList"></div>
-    </div>
-    <button id="logoutBtn" class="btn-outline-full">Logout</button>
+    <div><strong id="userName"></strong> <i id="closePanel" class="fas fa-times" style="float:right; cursor:pointer;"></i></div>
+    <div class="panel-points">🪙 Pikët: <span id="userPoints">0</span> <button id="redeemAdFreeBtn" class="btn-small">Hiq reklamat (2000p)</button></div>
+    <div id="adFreeStatus"></div>
+    <div><h4>❤️ Favoritet</h4><div id="favoritesList"></div></div>
+    <div><h4>⏰ Shiko më vonë</h4><div id="watchlistList"></div></div>
+    <button id="logoutBtn" class="btn-primary" style="width:100%; margin-top:10px;">Dilni</button>
 </div>
 
 <div id="toast" class="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+<script type="module">
+    // ================= FIREBASE CONFIG (Zëvendëso me të dhënat e tua) =================
+    const firebaseConfig = {
+        apiKey: "AIzaSyDummyReplaceWithYours",
+        authDomain: "albfilms24.firebaseapp.com",
+        projectId: "albfilms24",
+        storageBucket: "albfilms24.appspot.com",
+        messagingSenderId: "123456789",
+        appId: "1:123456789:web:abc123"
+    };
+
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    const TMDB_API_KEY = '7a98db423d6e3a5ee922a3e51a09d135';
+    const TMDB_IMG = 'https://image.tmdb.org/t/p/w500';
+    const TMDB_BACKDROP = 'https://image.tmdb.org/t/p/original';
+
+    let currentUser = null;
+    let swiper = null;
+    let activePreview = null;
+
+    function showToast(msg) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Krijon kartelën për film
+    function createCard(item, isTv = false, containerId) {
+        const card = document.createElement('div');
+        card.className = isTv ? 'tv-card' : 'movie-card';
+        card.setAttribute('data-id', item.id);
+        const title = item.title || item.name;
+        const date = item.release_date || item.first_air_date;
+        const year = date ? date.split('-')[0] : '?';
+        const vote = item.vote_average ? item.vote_average.toFixed(1) : '?';
+        card.innerHTML = `
+            <div class="card-icons">
+                <i class="far fa-heart" data-action="fav" data-id="${item.id}" data-title="${title.replace(/'/g, "\\'")}" data-poster="${item.poster_path || ''}" data-type="${isTv ? 'tv' : 'movie'}"></i>
+                <i class="far fa-clock" data-action="wl" data-id="${item.id}" data-title="${title.replace(/'/g, "\\'")}" data-poster="${item.poster_path || ''}" data-type="${isTv ? 'tv' : 'movie'}"></i>
+            </div>
+            <img class="poster" src="${item.poster_path ? TMDB_IMG+item.poster_path : 'https://via.placeholder.com/300x450?text=No+Image'}" alt="${title}">
+            <div class="card-info">
+                <h4>${title}</h4>
+                <p>${year} ⭐ ${vote}</p>
+            </div>
+        `;
+        // Hover preview (edhe për TV, por do të tregojë vetëm info, jo trailer)
+        let hoverTimeout;
+        card.addEventListener('mouseenter', (e) => {
+            hoverTimeout = setTimeout(() => showRichPreview(item.id, card, isTv), 350);
+        });
+        card.addEventListener('mouseleave', () => {
+            clearTimeout(hoverTimeout);
+            if (activePreview) activePreview.remove();
+        });
+        card.addEventListener('click', (e) => {
+            if (e.target.tagName === 'I') return;
+            if (isTv) window.location.href = `tv.html?id=${item.id}`;
+            else window.location.href = `watch.html?id=${item.id}`;
+        });
+        document.getElementById(containerId).appendChild(card);
+        return card;
+    }
+
+    async function showRichPreview(id, cardEl, isTv = false) {
+        if (activePreview) activePreview.remove();
+        try {
+            const type = isTv ? 'tv' : 'movie';
+            const [detailsRes, creditsRes] = await Promise.all([
+                fetch(`https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_API_KEY}&language=sq`),
+                fetch(`https://api.themoviedb.org/3/${type}/${id}/credits?api_key=${TMDB_API_KEY}`)
+            ]);
+            const data = await detailsRes.json();
+            const credits = await creditsRes.json();
+            const cast = credits.cast?.slice(0, 3).map(c => c.name).join(', ') || 'N/A';
+            const title = data.title || data.name;
+            const year = (data.release_date || data.first_air_date || '').split('-')[0] || '?';
+            const runtime = data.runtime ? data.runtime + ' min' : (data.number_of_episodes ? `${data.number_of_episodes} episode` : '?');
+            const preview = document.createElement('div');
+            preview.className = 'preview-rich';
+            preview.innerHTML = `
+                <div class="preview-info">
+                    <h4>${title} (${year})</h4>
+                    <div class="preview-meta">⭐ ${data.vote_average?.toFixed(1)}/10 | 🎬 ${runtime}</div>
+                    <div class="preview-overview">${data.overview?.substring(0, 130)}...</div>
+                    <div class="preview-cast"><strong>Aktorët:</strong> ${cast}</div>
+                </div>
+            `;
+            document.body.appendChild(preview);
+            activePreview = preview;
+            const rect = cardEl.getBoundingClientRect();
+            preview.style.top = rect.top + window.scrollY + 'px';
+            preview.style.left = rect.left + rect.width + 10 + 'px';
+            if (parseInt(preview.style.left) + 360 > window.innerWidth) {
+                preview.style.left = rect.left - 370 + 'px';
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    // Ngarkimi i filmave
+    async function loadGrid(endpoint, gridId, limit = 12) {
+        const res = await fetch(`https://api.themoviedb.org/3${endpoint}?api_key=${TMDB_API_KEY}&language=sq`);
+        const data = await res.json();
+        const grid = document.getElementById(gridId);
+        grid.innerHTML = '';
+        data.results.slice(0, limit).forEach(m => createCard(m, false, gridId));
+    }
+
+    // Ngarkimi i serialeve nga TMDB (popullore)
+    async function loadTVShows() {
+        const res = await fetch(`https://api.themoviedb.org/3/tv/popular?api_key=${TMDB_API_KEY}&language=sq`);
+        const data = await res.json();
+        const grid = document.getElementById('tvGrid');
+        grid.innerHTML = '';
+        data.results.slice(0, 20).forEach(show => createCard(show, true, 'tvGrid'));
+    }
+
+    // Slideri
+    async function loadHeroSlider() {
+        const res = await fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&language=sq`);
+        const data = await res.json();
+        const slides = data.results.slice(0, 5);
+        const wrapper = document.getElementById('heroSlider');
+        wrapper.innerHTML = '';
+        slides.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'swiper-slide';
+            div.innerHTML = `
+                <img class="slide-bg" src="${TMDB_BACKDROP + m.backdrop_path}" alt="${m.title}">
+                <div class="slide-overlay"></div>
+                <div class="slide-content">
+                    <h2>${m.title}</h2>
+                    <p>${m.overview?.substring(0, 120)}...</p>
+                    <button class="btn-primary" onclick="location.href='watch.html?id=${m.id}'">Shiko Tani</button>
+                </div>
+            `;
+            wrapper.appendChild(div);
+        });
+        if (swiper) swiper.destroy();
+        swiper = new Swiper('.heroSwiper', { loop: true, autoplay: { delay: 5000 }, navigation: { nextEl: '.swiper-button-next', prevEl: '.swiper-button-prev' }, pagination: { el: '.swiper-pagination', clickable: true } });
+    }
+
+    // Kërkimi (filma dhe seriale)
+    window.searchMovies = async function(query) {
+        if (!query || query.length < 2) { document.getElementById('searchResultsContainer').style.display = 'none'; return; }
+        const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=sq`);
+        const data = await res.json();
+        const results = data.results.filter(r => r.media_type === 'movie' || r.media_type === 'tv').slice(0, 12);
+        const grid = document.getElementById('searchGrid');
+        grid.innerHTML = '';
+        results.forEach(item => {
+            const isTv = item.media_type === 'tv';
+            createCard(item, isTv, 'searchGrid');
+        });
+        document.getElementById('searchResultsContainer').style.display = results.length ? 'block' : 'none';
+    };
+
+    // Ngarkimi i zhanrit për filma (rreshti i parë)
+    window.loadGenre = async function(genreId) {
+        const res = await fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreId}&language=sq`);
+        const data = await res.json();
+        const grid = document.getElementById('trendingGrid');
+        grid.innerHTML = '';
+        data.results.slice(0, 12).forEach(m => createCard(m, false, 'trendingGrid'));
+    };
+
+    // Firebase operacionet (favorite, watchlist, points)
+    async function toggleFavorite(item) { if (!currentUser) { showToast('Hyni së pari!'); return; } const ref = doc(db, 'users', currentUser.uid); const snap = await getDoc(ref); const favs = snap.data()?.favorites || []; const exists = favs.some(f => f.id === item.id && f.type === item.type); const favItem = { id: item.id, title: item.title, poster: item.poster, type: item.type }; await updateDoc(ref, { favorites: exists ? arrayRemove(favItem) : arrayUnion(favItem) }); showToast(exists ? 'U hoq nga favoritet' : 'U shtua në favorit'); }
+    async function toggleWatchlist(item) { if (!currentUser) { showToast('Hyni së pari!'); return; } const ref = doc(db, 'users', currentUser.uid); const snap = await getDoc(ref); const wl = snap.data()?.watchlist || []; const exists = wl.some(w => w.id === item.id && w.type === item.type); const wlItem = { id: item.id, title: item.title, poster: item.poster, type: item.type }; await updateDoc(ref, { watchlist: exists ? arrayRemove(wlItem) : arrayUnion(wlItem) }); showToast(exists ? 'U hoq nga Watch Later' : 'U ruajt për më vonë'); }
+
+    // Auth state
+    onAuthStateChanged(auth, async (user) => {
+        currentUser = user;
+        const panel = document.getElementById('userPanel');
+        if (user) {
+            panel.style.display = 'block';
+            document.getElementById('userName').innerText = user.email.split('@')[0];
+            const userRef = doc(db, 'users', user.uid);
+            onSnapshot(userRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    document.getElementById('userPoints').innerText = data.points || 0;
+                    document.getElementById('adFreeStatus').innerText = data.adFreeUntil && new Date(data.adFreeUntil) > new Date() ? '✅ Pa reklama' : '⚠️ Reklamat aktive';
+                    const favDiv = document.getElementById('favoritesList');
+                    favDiv.innerHTML = (data.favorites || []).map(f => `<div>${f.type === 'tv' ? '📺' : '🎬'} ${f.title} <button class="remove-fav" data-id="${f.id}" data-type="${f.type}" data-title="${f.title.replace(/'/g, "\\'")}" data-poster="${f.poster || ''}">❌</button></div>`).join('');
+                    const wlDiv = document.getElementById('watchlistList');
+                    wlDiv.innerHTML = (data.watchlist || []).map(w => `<div>${w.type === 'tv' ? '📺' : '🎬'} ${w.title} <button class="remove-wl" data-id="${w.id}" data-type="${w.type}" data-title="${w.title.replace(/'/g, "\\'")}" data-poster="${w.poster || ''}">❌</button></div>`).join('');
+                } else setDoc(userRef, { points: 0, favorites: [], watchlist: [], adFreeUntil: null });
+            });
+        } else panel.style.display = 'none';
+    });
+
+    // Event listeners
+    document.getElementById('searchInput').addEventListener('input', (e) => { window.searchMovies(e.target.value); });
+    document.getElementById('userIcon').onclick = () => document.getElementById('authModal').style.display = 'flex';
+    document.querySelector('.close-modal').onclick = () => document.getElementById('authModal').style.display = 'none';
+    document.getElementById('loginBtn').onclick = async () => { const email=document.getElementById('loginEmail').value, pwd=document.getElementById('loginPassword').value; try{ await signInWithEmailAndPassword(auth, email, pwd); document.getElementById('authModal').style.display='none'; showToast('Hyrja u krye!'); }catch(e){ showToast(e.message); } };
+    document.getElementById('registerBtn').onclick = async () => { const email=document.getElementById('regEmail').value, pwd=document.getElementById('regPassword').value; try{ await createUserWithEmailAndPassword(auth, email, pwd); document.getElementById('authModal').style.display='none'; showToast('Llogaria u krijua!'); }catch(e){ showToast(e.message); } };
+    document.getElementById('googleLoginBtn').onclick = async () => { try{ await signInWithPopup(auth, provider); document.getElementById('authModal').style.display='none'; }catch(e){ showToast(e.message); } };
+    document.getElementById('logoutBtn').onclick = () => signOut(auth);
+    document.getElementById('redeemAdFreeBtn').onclick = async () => { if(!currentUser)return; const ref=doc(db,'users',currentUser.uid); const snap=await getDoc(ref); const pts=snap.data()?.points||0; if(pts>=2000){ await updateDoc(ref,{points:pts-2000,adFreeUntil:new Date(Date.now()+30*86400000).toISOString()}); showToast('Reklamat u hoqën për 30 ditë!'); location.reload(); } else showToast(`Nuk ke mjaft pikë. Ke ${pts} nga 2000.`); };
+    document.getElementById('closePanel').onclick = () => document.getElementById('userPanel').style.display = 'none';
+    document.querySelectorAll('.tab-btn').forEach(btn => { btn.onclick = () => { document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('.auth-form').forEach(f=>f.classList.remove('active')); document.getElementById(btn.dataset.tab==='login'?'loginForm':'registerForm').classList.add('active'); }; });
+
+    // Initial load
+    loadGrid('/trending/movie/week', 'trendingGrid');
+    loadGrid('/movie/top_rated', 'topRatedGrid');
+    loadGrid('/movie/upcoming', 'upcomingGrid');
+    loadTVShows();
+    loadHeroSlider();
+</script>
 </body>
 </html>
