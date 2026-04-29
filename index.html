@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AlbFilms24 - Filma dhe Seriale HD</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<!-- Firebase SDK -->
+<script type="module" src="main.js"></script>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="logo">AF</div>
+  <i class="fas fa-home"></i>
+  <i class="fas fa-film"></i>
+  <i class="fas fa-tv"></i>
+  <i class="fas fa-star"></i>
+</div>
+
+<div class="main">
+
+<div class="header">
+  <h1 class="brand">AlbFilms<span>24</span></h1>
+  <div style="display: flex; gap: 15px; align-items: center;">
+    <input id="searchInput" placeholder="Kërko filma..." />
+    <i id="userIcon" class="fas fa-user-circle" style="font-size: 28px; cursor: pointer; color: #ccc;"></i>
+  </div>
+</div>
+
+<!-- HERO (e pandryshuar) -->
+<div class="hero">
+  <div class="hero-content">
+    <h1>AlbFilms24</h1>
+    <p>Destinacioni yt për filma dhe seriale HD. Eksploro dhe shijo pa kufi!</p>
+    <button onclick="scrollToContent()">Start Exploring</button>
+  </div>
+</div>
+
+<!-- Zhanret (tani dinamik me më shumë zhanre) -->
+<div class="genres" id="genreButtons">
+  <button data-genre="28">Action</button>
+  <button data-genre="35">Comedy</button>
+  <button data-genre="18">Drama</button>
+  <button data-genre="27">Horror</button>
+  <button data-genre="878">Science Fiction</button>
+  <button data-genre="10749">Romance</button>
+  <button data-genre="99">Documentary</button>
+</div>
+
+<!-- Rreshtat e filmave -->
+<h2 class="section-title">🔥 Trending</h2>
+<div class="row" id="trendingRow"></div>
+
+<h2 class="section-title">⭐ Top Rated</h2>
+<div class="row" id="topRatedRow"></div>
+
+<h2 class="section-title">📅 Upcoming</h2>
+<div class="row" id="upcomingRow"></div>
+
+<!-- Rreshti për rezultatet e kërkimit (shfaqet vetëm kur kërkohet) -->
+<div id="searchRowContainer" style="display: none;">
+  <h2 class="section-title">🔍 Rezultatet e kërkimit</h2>
+  <div class="row" id="searchRow"></div>
+</div>
+
+</div> <!-- .main -->
+
+<!-- MODAL PËR LOGIN -->
+<div id="authModal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <span class="close-modal">&times;</span>
+    <div class="auth-tabs">
+      <button class="tab-btn active" data-tab="login">Hyr</button>
+      <button class="tab-btn" data-tab="register">Regjistrohu</button>
+    </div>
+    <div id="loginForm" class="auth-form active">
+      <input type="email" id="loginEmail" placeholder="Email" required>
+      <input type="password" id="loginPassword" placeholder="Fjalëkalimi" required>
+      <button id="loginBtn" class="btn-primary">Identifikohu</button>
+      <button id="googleLoginBtn" class="btn-google"><i class="fab fa-google"></i> Vazhdo me Google</button>
+    </div>
+    <div id="registerForm" class="auth-form">
+      <input type="text" id="regName" placeholder="Emri">
+      <input type="email" id="regEmail" placeholder="Email" required>
+      <input type="password" id="regPassword" placeholder="Fjalëkalimi" required>
+      <button id="registerBtn" class="btn-primary">Krijo llogari</button>
+    </div>
+  </div>
+</div>
+
+<!-- PANELI I PËRDORUESIT (shfaqet pas login) -->
+<div id="userPanel" class="user-panel" style="display:none;">
+  <div class="panel-header">
+    <i class="fas fa-user-circle"></i> <span id="userName">Përdorues</span>
+    <i id="closePanel" class="fas fa-times" style="cursor:pointer;"></i>
+  </div>
+  <div class="panel-points">
+    🪙 Pikët: <strong id="userPoints">0</strong>
+    <button id="redeemAdFreeBtn" class="btn-small">Hiq reklamat (2000p)</button>
+  </div>
+  <div class="panel-status" id="adFreeStatus"></div>
+  <div class="panel-section">
+    <h4><i class="fas fa-heart"></i> Favorites</h4>
+    <div id="favoritesList"></div>
+  </div>
+  <div class="panel-section">
+    <h4><i class="fas fa-clock"></i> Watch Later</h4>
+    <div id="watchlistList"></div>
+  </div>
+  <button id="logoutBtn" class="btn-outline-full">Dilni</button>
+</div>
+
+<!-- TOAST NOTIFIKIMET -->
+<div id="toast" class="toast"></div>
+
+<script>
+// Funksion i vogël për scroll (ekzistues)
+function scrollToContent() {
+  document.querySelector('.main').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+
+</body>
+</html>
