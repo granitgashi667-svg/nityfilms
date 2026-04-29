@@ -1,109 +1,325 @@
 <!DOCTYPE html>
-<html lang="sq">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AlbFilms24 - Seriali</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <title>AlbFilms24 - Watch TV Series HD</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     <style>
-        body { margin: 0; background: #0a0a0f; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .container { max-width: 1200px; margin: auto; padding: 20px; }
-        .back-btn { background: #e50914; border: none; padding: 10px 20px; border-radius: 30px; color: white; cursor: pointer; margin-bottom: 20px; }
-        .tv-header { display: flex; gap: 30px; margin-bottom: 30px; flex-wrap: wrap; }
-        .tv-poster img { width: 250px; border-radius: 16px; }
-        .tv-info { flex: 1; }
-        .seasons { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
-        .season-btn { background: #1e1e2a; border: none; padding: 8px 20px; border-radius: 30px; color: white; cursor: pointer; }
-        .season-btn.active { background: #e50914; }
-        .episodes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 20px; }
-        .episode-card { background: #1a1a2a; border-radius: 12px; padding: 12px; cursor: pointer; transition: 0.2s; display: flex; gap: 12px; align-items: center; }
-        .episode-card:hover { background: #2a2a35; }
-        .episode-number { font-weight: bold; color: #e50914; min-width: 50px; }
-        .episode-title { flex: 1; }
-        .player-container { margin-top: 30px; background: #000; border-radius: 16px; overflow: hidden; display: none; }
-        iframe { width: 100%; height: 500px; border: none; }
-        @media (max-width: 768px) { .tv-poster img { width: 150px; } iframe { height: 300px; } }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0f;
+            color: #fff;
+            line-height: 1.5;
+        }
+        .tv-container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+        /* Navigation Bar */
+        .nav-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff, #e50914);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .back-btn {
+            background: rgba(30, 30, 42, 0.9);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 10px 24px;
+            border-radius: 40px;
+            color: white;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .back-btn:hover {
+            background: #e50914;
+            border-color: #e50914;
+        }
+        /* Series Hero Section */
+        .series-hero {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+        .series-poster img {
+            width: 260px;
+            border-radius: 20px;
+            box-shadow: 0 20px 30px -10px rgba(0,0,0,0.5);
+        }
+        .series-details {
+            flex: 1;
+        }
+        .series-title {
+            font-size: 40px;
+            font-weight: 800;
+            margin-bottom: 16px;
+        }
+        .series-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 20px;
+            color: #ccc;
+        }
+        .series-meta span {
+            background: #1e1e2a;
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 14px;
+        }
+        .series-overview {
+            font-size: 16px;
+            color: #bbb;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            max-width: 700px;
+        }
+        /* Season Selector */
+        .season-selector {
+            margin: 30px 0 20px;
+        }
+        .season-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .season-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .season-btn {
+            background: #1e1e2a;
+            border: 1px solid #333;
+            padding: 8px 20px;
+            border-radius: 40px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .season-btn:hover {
+            background: #333;
+        }
+        .season-btn.active {
+            background: #e50914;
+            border-color: #e50914;
+        }
+        /* Episodes Grid */
+        .episodes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .episode-card {
+            background: #1a1a2a;
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .episode-card:hover {
+            background: #252535;
+            border-color: #e50914;
+            transform: translateX(5px);
+        }
+        .episode-number {
+            background: #e50914;
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 40px;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .episode-info {
+            flex: 1;
+        }
+        .episode-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .episode-runtime {
+            font-size: 12px;
+            color: #aaa;
+        }
+        /* Player Section */
+        .player-section {
+            margin-top: 40px;
+        }
+        .player-wrapper {
+            width: 100%;
+            background: #000;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 20px 35px -10px rgba(0,0,0,0.6);
+        }
+        .player-wrapper iframe {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border: none;
+            display: block;
+        }
+        @media (max-width: 768px) {
+            .series-poster img { width: 160px; }
+            .series-title { font-size: 28px; }
+            .episodes-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
-<div class="container">
-    <button class="back-btn" onclick="history.back()"><i class="fas fa-arrow-left"></i> Kthehu</button>
-    <div id="tvContent">
-        <div class="tv-header">
-            <div class="tv-poster"><img id="poster" src="" alt="Poster"></div>
-            <div class="tv-info"><h1 id="title"></h1><p id="overview"></p><p id="details"></p></div>
+    <div class="tv-container">
+        <div class="nav-bar">
+            <div class="logo">AlbFilms<span style="color:#e50914;">24</span></div>
+            <button class="back-btn" onclick="history.back()"><i class="fas fa-arrow-left"></i> Back to Home</button>
         </div>
-        <div id="seasonsContainer" class="seasons"></div>
-        <div id="episodesContainer"></div>
-        <div id="playerContainer" class="player-container"><iframe id="player" allowfullscreen allow="autoplay; fullscreen"></iframe></div>
+
+        <div id="seriesContent">
+            <div class="series-hero">
+                <div class="series-poster">
+                    <img id="poster" src="" alt="Series Poster">
+                </div>
+                <div class="series-details">
+                    <h1 class="series-title" id="title">Loading...</h1>
+                    <div class="series-meta" id="meta"></div>
+                    <div class="series-overview" id="overview"></div>
+                </div>
+            </div>
+
+            <div class="season-selector">
+                <div class="season-title"><i class="fas fa-layer-group"></i> Select Season</div>
+                <div class="season-buttons" id="seasonButtons"></div>
+            </div>
+
+            <div id="episodesContainer" class="episodes-grid"></div>
+
+            <div class="player-section" id="playerSection" style="display: none;">
+                <div class="player-wrapper">
+                    <iframe id="player" allowfullscreen allow="autoplay; fullscreen"></iframe>
+                </div>
+            </div>
+        </div>
     </div>
-</div>
-<script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const tvId = urlParams.get('id');
-    const TMDB_API_KEY = '7a98db423d6e3a5ee922a3e51a09d135';
-    const TMDB_IMG = 'https://image.tmdb.org/t/p/w500';
 
-    let tvData = null;
-    let seasonsData = [];
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const tvId = urlParams.get('id');
+        const TMDB_API_KEY = '7a98db423d6e3a5ee922a3e51a09d135';
+        const TMDB_IMG_URL = 'https://image.tmdb.org/t/p/w500';
 
-    async function loadTVDetails() {
-        if (!tvId) { document.getElementById('title').innerText = 'ID e serialit nuk u gjet'; return; }
-        const res = await fetch(`https://api.themoviedb.org/3/tv/${tvId}?api_key=${TMDB_API_KEY}&language=sq`);
-        tvData = await res.json();
-        document.getElementById('title').innerText = tvData.name;
-        document.getElementById('overview').innerText = tvData.overview || 'Pa përshkrim';
-        document.getElementById('details').innerHTML = `<strong>Viti:</strong> ${tvData.first_air_date?.split('-')[0] || '?'} | <strong>Vlerësimi:</strong> ⭐ ${tvData.vote_average?.toFixed(1)}/10 | <strong>Sezone:</strong> ${tvData.number_of_seasons}`;
-        document.getElementById('poster').src = tvData.poster_path ? TMDB_IMG + tvData.poster_path : 'https://via.placeholder.com/300x450?text=No+Image';
-        await loadSeasons();
-    }
+        let tvData = null;
 
-    async function loadSeasons() {
-        const seasonsDiv = document.getElementById('seasonsContainer');
-        seasonsDiv.innerHTML = '';
-        // Marrim listën e sezoneve nga TV details
-        const seasons = tvData.seasons || [];
-        seasons.forEach(season => {
-            if (season.season_number === 0) return; // Skip specials
-            const btn = document.createElement('button');
-            btn.className = 'season-btn';
-            btn.innerText = `Sezoni ${season.season_number}`;
-            btn.onclick = () => { loadEpisodes(season.season_number); document.querySelectorAll('.season-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); };
-            seasonsDiv.appendChild(btn);
-        });
-        if (seasons.length) loadEpisodes(seasons[0].season_number);
-    }
+        async function loadTVDetails() {
+            if (!tvId) {
+                document.getElementById('title').innerText = 'Invalid Series ID';
+                return;
+            }
+            try {
+                const res = await fetch(`https://api.themoviedb.org/3/tv/${tvId}?api_key=${TMDB_API_KEY}&language=en-US`);
+                tvData = await res.json();
+                document.getElementById('title').innerText = tvData.name;
+                document.getElementById('poster').src = tvData.poster_path ? TMDB_IMG_URL + tvData.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster';
+                document.getElementById('overview').innerText = tvData.overview || 'No description available.';
+                document.getElementById('meta').innerHTML = `
+                    <span><i class="fas fa-calendar-alt"></i> ${tvData.first_air_date?.split('-')[0] || 'N/A'}</span>
+                    <span><i class="fas fa-star"></i> ${tvData.vote_average?.toFixed(1)}/10 (${tvData.vote_count?.toLocaleString()} votes)</span>
+                    <span><i class="fas fa-tv"></i> ${tvData.number_of_seasons} Seasons</span>
+                `;
+                loadSeasons();
+            } catch (error) {
+                console.error('Error loading TV series:', error);
+                document.getElementById('title').innerText = 'Error loading series details';
+            }
+        }
 
-    async function loadEpisodes(seasonNum) {
-        const res = await fetch(`https://api.themoviedb.org/3/tv/${tvId}/season/${seasonNum}?api_key=${TMDB_API_KEY}&language=sq`);
-        const seasonData = await res.json();
-        const episodes = seasonData.episodes || [];
-        const episodesDiv = document.getElementById('episodesContainer');
-        episodesDiv.innerHTML = '';
-        episodes.forEach(ep => {
-            const epCard = document.createElement('div');
-            epCard.className = 'episode-card';
-            epCard.innerHTML = `
-                <div class="episode-number">E${ep.episode_number}</div>
-                <div class="episode-title">${ep.name}</div>
-                <div><i class="fas fa-play"></i></div>
-            `;
-            epCard.onclick = () => playEpisode(seasonNum, ep.episode_number);
-            episodesDiv.appendChild(epCard);
-        });
-    }
+        function loadSeasons() {
+            const seasons = tvData.seasons || [];
+            const seasonContainer = document.getElementById('seasonButtons');
+            seasonContainer.innerHTML = '';
+            seasons.forEach(season => {
+                if (season.season_number === 0) return;
+                const btn = document.createElement('button');
+                btn.className = 'season-btn';
+                btn.innerText = `Season ${season.season_number}`;
+                btn.onclick = () => {
+                    document.querySelectorAll('.season-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    loadEpisodes(season.season_number);
+                };
+                seasonContainer.appendChild(btn);
+            });
+            if (seasons.length > 0 && seasons[0].season_number !== 0) {
+                document.querySelector('.season-btn')?.click();
+            }
+        }
 
-    function playEpisode(seasonNum, episodeNum) {
-        const playerContainer = document.getElementById('playerContainer');
-        const player = document.getElementById('player');
-        const embedUrl = `https://vidsrcme.ru/embed/tv/${tvId}/${seasonNum}/${episodeNum}`;
-        player.src = embedUrl;
-        playerContainer.style.display = 'block';
-        // Scroll to player
-        playerContainer.scrollIntoView({ behavior: 'smooth' });
-    }
+        async function loadEpisodes(seasonNum) {
+            const episodesDiv = document.getElementById('episodesContainer');
+            episodesDiv.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px;">Loading episodes...</div>';
+            try {
+                const res = await fetch(`https://api.themoviedb.org/3/tv/${tvId}/season/${seasonNum}?api_key=${TMDB_API_KEY}&language=en-US`);
+                const seasonData = await res.json();
+                const episodes = seasonData.episodes || [];
+                episodesDiv.innerHTML = '';
+                episodes.forEach(ep => {
+                    const card = document.createElement('div');
+                    card.className = 'episode-card';
+                    card.innerHTML = `
+                        <div class="episode-number">${ep.episode_number}</div>
+                        <div class="episode-info">
+                            <div class="episode-name">${ep.name}</div>
+                            <div class="episode-runtime"><i class="far fa-clock"></i> ${ep.runtime || 'N/A'} min</div>
+                        </div>
+                        <i class="fas fa-play-circle" style="font-size: 24px; color:#e50914;"></i>
+                    `;
+                    card.onclick = () => playEpisode(seasonNum, ep.episode_number);
+                    episodesDiv.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error loading episodes:', error);
+                episodesDiv.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px;">Failed to load episodes.</div>';
+            }
+        }
 
-    loadTVDetails();
-</script>
+        function playEpisode(seasonNum, episodeNum) {
+            const playerSection = document.getElementById('playerSection');
+            const player = document.getElementById('player');
+            const embedUrl = `https://vidsrcme.ru/embed/tv/${tvId}/${seasonNum}/${episodeNum}`;
+            player.src = embedUrl;
+            playerSection.style.display = 'block';
+            playerSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        loadTVDetails();
+    </script>
 </body>
 </html>
