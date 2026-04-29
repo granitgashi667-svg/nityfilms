@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shiko Filmin - AlbFilms24</title>
+<style>
+body{ margin:0; background:#0a0a0a; color:#fff; font-family:Arial; }
+.container{ max-width:1000px; margin:auto; padding:20px; text-align:center; }
+iframe{ width:100%; height:520px; border:none; border-radius:12px; background:#000; }
+.servers{ margin:15px 0; display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
+.server-btn{ background:#222; border:1px solid #444; color:#fff; padding:8px 16px; border-radius:30px; cursor:pointer; }
+.server-btn.active{ background:#e50914; border-color:#e50914; }
+.back, .earn-points{ display:inline-block; margin-top:20px; color:#e50914; text-decoration:none; margin-right:15px; }
+.earn-points{ background:#e50914; color:white; padding:8px 20px; border-radius:30px; border:none; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h2 id="title">Loading...</h2>
+    <div class="servers" id="servers"></div>
+    <iframe id="player" allowfullscreen allow="autoplay; fullscreen"></iframe>
+    <div>
+        <a href="javascript:history.back()" class="back">← Kthehu</a>
+        <button id="earnPointsBtn" class="earn-points">✅ E pashë filmin (Merr 10 pikë)</button>
+    </div>
+</div>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    
+    const firebaseConfig = { /* vendos të njëjtën config si në main.js */ };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const movieId = urlParams.get("id");
+    
+    async function loadMovie() {
+        const res = await fetch(`https://api.themoviedb.org/3/movie/${movieId}?api_key=7a98db423d6e3a5ee922a3e51a09d135&language=en-US`);
+        const movie = await res.json();
+        document.getElementById("title").innerText = movie.title;
+        
+        // Servere te paracaktuara (mund ti zevendesosh me lidhjet e tua)
+        const servers = [
+            { name: "Embed 1", url: `https://embed.su/embed/movie/${movieId}` },
+            { name: "VidSrc", url: `https://vidsrc.xyz/embed/movie/${movieId}` }
+        ];
+        const serversDiv = document.getElementById("servers");
+        serversDiv.innerHTML = "";
+        servers.forEach((s, idx) => {
+            const btn = document.createElement("button");
+            btn.className = "server-btn";
+            btn.innerText = s.name;
+            btn.onclick = () => {
+                document.getElementById("player").src = s.url;
+                document.querySelectorAll(".server-btn").forEach(b=>b.classList.remove("active"));
+                btn.classList.add("active");
+            };
+            serversDiv.appendChild(btn);
+            if(idx===0) setTimeout(()=>btn.click(),200);
+        });
+    }
+    loadMovie();
+    
+    document.getElementById("earnPointsBtn").addEventListener("click", async () => {
+        const user = auth.currentUser;
+        if(!user) { alert("Hyni së pari për të marrë pikë!"); return; }
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, { points: increment(10) });
+        alert("+10 pikë! Faleminderit që shikove filmin.");
+    });
+</script>
+</body>
+</html>
