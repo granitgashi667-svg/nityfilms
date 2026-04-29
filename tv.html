@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlbFilms24 - Seriali</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        body { margin: 0; background: #0a0a0f; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .container { max-width: 1200px; margin: auto; padding: 20px; }
+        .back-btn { background: #e50914; border: none; padding: 10px 20px; border-radius: 30px; color: white; cursor: pointer; margin-bottom: 20px; }
+        .tv-header { display: flex; gap: 30px; margin-bottom: 30px; flex-wrap: wrap; }
+        .tv-poster img { width: 250px; border-radius: 16px; }
+        .tv-info { flex: 1; }
+        .seasons { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+        .season-btn { background: #1e1e2a; border: none; padding: 8px 20px; border-radius: 30px; color: white; cursor: pointer; }
+        .season-btn.active { background: #e50914; }
+        .episodes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 20px; }
+        .episode-card { background: #1a1a2a; border-radius: 12px; padding: 12px; cursor: pointer; transition: 0.2s; display: flex; gap: 12px; align-items: center; }
+        .episode-card:hover { background: #2a2a35; }
+        .episode-number { font-weight: bold; color: #e50914; min-width: 50px; }
+        .episode-title { flex: 1; }
+        .player-container { margin-top: 30px; background: #000; border-radius: 16px; overflow: hidden; display: none; }
+        iframe { width: 100%; height: 500px; border: none; }
+        @media (max-width: 768px) { .tv-poster img { width: 150px; } iframe { height: 300px; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <button class="back-btn" onclick="history.back()"><i class="fas fa-arrow-left"></i> Kthehu</button>
+    <div id="tvContent">
+        <div class="tv-header">
+            <div class="tv-poster"><img id="poster" src="" alt="Poster"></div>
+            <div class="tv-info"><h1 id="title"></h1><p id="overview"></p><p id="details"></p></div>
+        </div>
+        <div id="seasonsContainer" class="seasons"></div>
+        <div id="episodesContainer"></div>
+        <div id="playerContainer" class="player-container"><iframe id="player" allowfullscreen allow="autoplay; fullscreen"></iframe></div>
+    </div>
+</div>
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const tvId = urlParams.get('id');
+    const TMDB_API_KEY = '7a98db423d6e3a5ee922a3e51a09d135';
+    const TMDB_IMG = 'https://image.tmdb.org/t/p/w500';
+
+    let tvData = null;
+    let seasonsData = [];
+
+    async function loadTVDetails() {
+        if (!tvId) { document.getElementById('title').innerText = 'ID e serialit nuk u gjet'; return; }
+        const res = await fetch(`https://api.themoviedb.org/3/tv/${tvId}?api_key=${TMDB_API_KEY}&language=sq`);
+        tvData = await res.json();
+        document.getElementById('title').innerText = tvData.name;
+        document.getElementById('overview').innerText = tvData.overview || 'Pa përshkrim';
+        document.getElementById('details').innerHTML = `<strong>Viti:</strong> ${tvData.first_air_date?.split('-')[0] || '?'} | <strong>Vlerësimi:</strong> ⭐ ${tvData.vote_average?.toFixed(1)}/10 | <strong>Sezone:</strong> ${tvData.number_of_seasons}`;
+        document.getElementById('poster').src = tvData.poster_path ? TMDB_IMG + tvData.poster_path : 'https://via.placeholder.com/300x450?text=No+Image';
+        await loadSeasons();
+    }
+
+    async function loadSeasons() {
+        const seasonsDiv = document.getElementById('seasonsContainer');
+        seasonsDiv.innerHTML = '';
+        // Marrim listën e sezoneve nga TV details
+        const seasons = tvData.seasons || [];
+        seasons.forEach(season => {
+            if (season.season_number === 0) return; // Skip specials
+            const btn = document.createElement('button');
+            btn.className = 'season-btn';
+            btn.innerText = `Sezoni ${season.season_number}`;
+            btn.onclick = () => { loadEpisodes(season.season_number); document.querySelectorAll('.season-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); };
+            seasonsDiv.appendChild(btn);
+        });
+        if (seasons.length) loadEpisodes(seasons[0].season_number);
+    }
+
+    async function loadEpisodes(seasonNum) {
+        const res = await fetch(`https://api.themoviedb.org/3/tv/${tvId}/season/${seasonNum}?api_key=${TMDB_API_KEY}&language=sq`);
+        const seasonData = await res.json();
+        const episodes = seasonData.episodes || [];
+        const episodesDiv = document.getElementById('episodesContainer');
+        episodesDiv.innerHTML = '';
+        episodes.forEach(ep => {
+            const epCard = document.createElement('div');
+            epCard.className = 'episode-card';
+            epCard.innerHTML = `
+                <div class="episode-number">E${ep.episode_number}</div>
+                <div class="episode-title">${ep.name}</div>
+                <div><i class="fas fa-play"></i></div>
+            `;
+            epCard.onclick = () => playEpisode(seasonNum, ep.episode_number);
+            episodesDiv.appendChild(epCard);
+        });
+    }
+
+    function playEpisode(seasonNum, episodeNum) {
+        const playerContainer = document.getElementById('playerContainer');
+        const player = document.getElementById('player');
+        const embedUrl = `https://vidsrcme.ru/embed/tv/${tvId}/${seasonNum}/${episodeNum}`;
+        player.src = embedUrl;
+        playerContainer.style.display = 'block';
+        // Scroll to player
+        playerContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    loadTVDetails();
+</script>
+</body>
+</html>
